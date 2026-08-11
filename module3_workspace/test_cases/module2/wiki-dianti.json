@@ -1,0 +1,20 @@
+{
+  "contractVersion": "1.0",
+  "projectId": "project-default",
+  "wikiSpaceId": "maintenance-manuals",
+  "wikiPageId": "019fd112-0000-7000-8000-000000000022",
+  "wikiPageVersion": 1,
+  "pageType": "PROCEDURE",
+  "lifecycleStatus": "DRAFT",
+  "title": "电梯年检前制动器断电与间隙测量",
+  "summary": "执行制动器间隙调整前，应先将电梯运行至顶层并切断主电源，再使用塞尺测量闸瓦与制动轮间隙，确认其在 0.3mm 至 0.5mm 标准范围内。",
+  "bodyMarkdown": "1. 将电梯运行至顶层并切断主电源。\n2. 使用塞尺测量制动器闸瓦与制动轮之间的间隙，标准值为 0.3mm 至 0.5mm。",
+  "evidenceRefs": [
+    {
+      "evidenceSnapshotId": "019fd112-0000-7000-8000-000000000002",
+      "evidenceId": "019fd112-0000-7000-8000-000000000005"
+    }
+  ],
+  "createdAt": "2026-08-07T14:15:00+08:00",
+  "updatedAt": "2026-08-07T14:15:00+08:00"
+}

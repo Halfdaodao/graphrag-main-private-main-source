@@ -1,0 +1,41 @@
+{
+  "contractVersion": "1.0",
+  "evidenceSnapshotId": "019fd112-0000-7000-8000-000000000002",
+  "projectId": "project-default",
+  "document": {
+    "documentId": "019fd112-0000-7000-8000-000000000003",
+    "documentVersionId": "019fd112-0000-7000-8000-000000000004",
+    "externalDocumentId": "manual-file:otis-elevator-redacted",
+    "title": "Otis 电梯年度维护保养手册（脱敏回归样本）",
+    "categoryCode": "PRODUCT_MANUAL"
+  },
+  "canonicalMarkdown": "# Otis 电梯年度维护保养手册\n\n## 制动器间隙调整 - 年检操作\n\n1. 将电梯运行至顶层并切断主电源。\n2. 使用塞尺测量制动器闸瓦与制动轮之间的间隙，标准值为 0.3mm 至 0.5mm。",
+  "evidenceCount": 1,
+  "isTruncated": false,
+  "evidenceUnits": [
+    {
+      "evidenceId": "019fd112-0000-7000-8000-000000000005",
+      "evidenceSnapshotId": "019fd112-0000-7000-8000-000000000002",
+      "documentId": "019fd112-0000-7000-8000-000000000003",
+      "documentVersionId": "019fd112-0000-7000-8000-000000000004",
+      "contentType": "TEXT",
+      "text": "1. 将电梯运行至顶层并切断主电源。\n2. 使用塞尺测量制动器闸瓦与制动轮之间的间隙，标准值为 0.3mm 至 0.5mm。",
+      "headingPath": ["制动器间隙调整 - 年检操作"],
+      "sourceFragments": [
+        {
+          "fragmentIndex": 0,
+          "pageNumber": 27,
+          "bbox": {"x0": 0.15, "y0": 0.72, "x1": 0.85, "y1": 0.88},
+          "markdownRange": {"start": 52, "end": 68}
+        },
+        {
+          "fragmentIndex": 1,
+          "pageNumber": 28,
+          "bbox": {"x0": 0.15, "y0": 0.10, "x1": 0.85, "y1": 0.25},
+          "markdownRange": {"start": 69, "end": 96}
+        }
+      ]
+    }
+  ],
+  "publishedAt": "2026-08-07T14:00:00+08:00"
+}
