@@ -4,18 +4,20 @@ dist/
 build/
 *.egg-info/
 
-# Local GraphRAG runtime artifacts (kept on the workstation, never committed)
+# Local GraphRAG runtime data and generated artifacts
 /cache/
 /input/
 /logs/
 /models/
 /output/
 /update_output/
+/module3_workspace/active_euos_source.json
+/module3_workspace/manifest.json
 /module3_workspace/evidence/
 /module3_workspace/wiki/
 /module3_workspace/graph_input/
+/module3_workspace/lancedb/
 /module3_workspace/governance/
-/module3_workspace/manifest.json
 
 # Test Output
 .coverage
@@ -67,7 +69,10 @@ site/
 docsite/
 .yarn/
 .pnp*
+
+# Local model files
 models/*
+
 # PyCharm
 .idea/
 

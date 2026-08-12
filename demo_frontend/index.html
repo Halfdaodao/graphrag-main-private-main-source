@@ -11,19 +11,22 @@ main{max-width:1480px;margin:20px auto;padding:0 18px;display:grid;grid-template
 section{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:16px;margin-bottom:18px}h2{font-size:16px;margin:0 0 12px}h3{font-size:14px;margin:16px 0 8px}
 label{display:block;font-size:12px;color:var(--muted);margin:10px 0 5px}input,textarea,select{width:100%;border:1px solid #cbd4db;border-radius:5px;padding:9px;font:inherit;background:#fff;color:var(--ink)}textarea{min-height:110px;resize:vertical}
 .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}button{border:0;border-radius:5px;background:var(--accent);color:#fff;padding:9px 12px;cursor:pointer;font-weight:600}button.secondary{background:#e8eef0;color:#26434d}button:disabled{opacity:.55;cursor:wait}
-.hint{color:var(--muted);font-size:12px;margin:8px 0 0}
+.status{padding:10px 12px;background:var(--accent-soft);border-left:3px solid #16794c;color:#245f48;border-radius:4px}.status.warn{background:#fff5f3;border-left-color:var(--danger);color:#8c2d25}.hint{color:var(--muted);font-size:12px;margin:8px 0 0}
+.flow{display:grid;gap:8px;margin:12px 0}.step{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:5px;padding:8px 10px;color:var(--muted)}.step.done{border-color:#72b39a;background:#f3fbf7;color:#225d4b}.step strong{font-size:12px;color:var(--ink)}
 .content{min-width:0}.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}.answer{min-height:210px;padding:16px;background:#f8fafb;border:1px solid var(--line);border-radius:5px;white-space:pre-wrap;word-break:break-word;line-height:1.65}
 .artifact-list{display:flex;flex-wrap:wrap;gap:6px}.artifact{font:12px monospace;background:#f1f4f5;border:1px solid var(--line);padding:5px 7px;border-radius:4px}.table-wrap{overflow:auto;max-height:360px;border:1px solid var(--line);border-radius:5px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{padding:7px 8px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top;max-width:360px;white-space:pre-wrap;word-break:break-word}th{background:#f4f7f8;position:sticky;top:0;color:#3b4b53}
 .evidence-chain{display:grid;gap:12px;min-height:80px}.evidence-group{border-left:3px solid var(--accent);padding-left:12px}.evidence-group h3{margin:0 0 7px}.evidence-item{padding:10px 0;border-top:1px solid var(--line)}.evidence-item:first-of-type{border-top:0}.evidence-meta{color:var(--muted);font-size:12px;margin-top:4px}.evidence-text{margin-top:6px;white-space:pre-wrap;word-break:break-word}
-pre{margin:0;background:#111b21;color:#dce9e8;border-radius:5px;padding:14px;min-height:260px;max-height:580px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.55 monospace}body:not(.cache-ready) #artifacts,body:not(.cache-ready) #entities,body:not(.cache-ready) #relationships,body:not(.cache-ready) #answer{visibility:hidden}
-.utility-actions{display:grid;gap:8px}.utility-actions button{text-align:left}.dialog{width:min(1120px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:0;border:0;border-radius:8px;box-shadow:0 18px 60px rgba(18,35,42,.3)}.dialog::backdrop{background:rgba(17,27,33,.48)}.dialog-shell{padding:18px;overflow:auto;max-height:calc(100vh - 32px);background:var(--bg)}.dialog-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}.dialog-head h2{margin:0}.icon-button{width:34px;height:34px;padding:0;background:#e8eef0;color:#26434d;font-size:21px;line-height:1}
+pre{margin:0;background:#111b21;color:#dce9e8;border-radius:5px;padding:14px;min-height:260px;max-height:580px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.55 monospace}section:has(#status),section:has(#inputs){display:none}body:not(.cache-ready) #artifacts,body:not(.cache-ready) #entities,body:not(.cache-ready) #relationships,body:not(.cache-ready) #answer{visibility:hidden}
 @media(max-width:1050px){main{grid-template-columns:1fr}.two{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header><h1>模块 3 GraphRAG 测试台</h1><p>从 EUOS 已发布 Wiki 与 Evidence 构建可审核、可追溯的知识图谱</p></header>
+<header><h1>模块 3 GraphRAG 测试台</h1><p>使用模块 1 Evidence 与模块 2 Wiki，验证实体、关系、多跳路径和 GraphRAG 查询</p></header>
 <main>
 <aside>
+<section><h2>模块 3 输入</h2><div id="status" class="status">请选择模块 1 和模块 2 文件</div><span id="s1" hidden></span><span id="s2" hidden></span><span id="s3" hidden></span><span id="s4" hidden></span>
+<div class="hint">请选择模块 1 和模块 2 文件，然后点击下方“运行索引”。系统会自动准备输入、运行 GraphRAG，并同步 Neo4j。</div><span id="examples" hidden></span><span id="refresh" hidden></span><span id="prepare" hidden></span>
+<p class="hint">测试用例位于项目的 <code>module3_workspace\test_cases</code>，也可以直接上传你自己的模块 1/2 数据。</p></section>
 <section><h2>导入上游数据</h2>
 <div class="hint">EUOS 拉取只读取本机环境变量中的服务 Token，不会发送到浏览器。</div>
 <label for="euosProjectId">EUOS 项目 ID</label><input id="euosProjectId" autocomplete="off" placeholder="例如：project-a">
@@ -31,18 +34,19 @@ pre{margin:0;background:#111b21;color:#dce9e8;border-radius:5px;padding:14px;min
 <label for="euosWikiVersion">Wiki 版本（留空取当前发布版本）</label><input id="euosWikiVersion" type="number" min="1" placeholder="当前发布版本">
 <div class="actions"><button id="syncEuos" class="secondary">从 EUOS 拉取已发布数据</button></div>
 <div id="euosInfo" class="hint">尚未读取 EUOS 连接配置。</div>
-<div class="actions"><button id="index">开始本次全量索引</button></div>
-<p class="hint">仅使用当前已同步的 EUOS 快照；索引会更新输入清单、生成 GraphRAG 产物并同步候选图谱。</p>
+<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+<label for="evidenceFiles">模块 1：EvidenceSnapshot JSON</label><input id="evidenceFiles" type="file" multiple accept=".json"><div id="evidenceInfo" class="hint">选择后自动写入模块 3 工作区。</div>
+<label for="wikiFiles">模块 2：WikiPage JSON 或 Wiki Markdown</label><input id="wikiFiles" type="file" multiple accept=".json,.md"><div id="wikiInfo" class="hint">支持 euos-service-py 契约 JSON 和 llm_wiki 的 Markdown 页面。</div>
+<div class="actions"><button id="index">运行索引</button></div>
 </section>
 <section><h2>GraphRAG 查询</h2>
 <label for="method">检索方式</label><select id="method"><option value="global">Global Search</option><option value="local">Local Search</option><option value="basic">Basic RAG</option><option value="drift">DRIFT Search</option></select>
 <p id="methodHint" class="hint">适合询问整体主题、风险和社区总结。</p>
 <label for="query">问题</label><textarea id="query" placeholder="例如：这套流程依赖哪些接口？接口变化会影响什么？"></textarea>
 <div class="actions"><button id="ask">执行查询</button><button class="secondary" id="clear">清空</button></div></section>
-<section><h2>高级工具</h2><div class="hint">审核、治理和实体消歧等低频操作在独立工作台中完成。</div><div class="utility-actions actions"><button class="secondary" id="openCandidates" type="button">候选审核工作台</button><button class="secondary" id="openGovernance" type="button">图谱治理与实体消歧</button></div></section>
 </aside>
 <div class="content">
-<section><h2>上游输入状态</h2><div id="inputs" class="hint">尚未从 EUOS 读取数据。</div></section>
+<section><h2>上游输入状态</h2><div id="inputs" class="hint">尚未读取模块 1/2 数据。</div></section>
 <section><h2>索引产物</h2><div id="artifacts" class="artifact-list"><span class="hint">运行索引后显示。</span></div></section>
 <div class="two"><section><h2>实体（模块 3）</h2><div id="entities" class="table-wrap"><div class="hint" style="padding:12px">暂无数据。</div></div></section><section><h2>关系（模块 3）</h2><div id="relationships" class="table-wrap"><div class="hint" style="padding:12px">暂无数据。</div></div></section></div>
 <section><h2>查询结果</h2><div id="answer" class="answer">准备输入并完成索引后，在左侧提问。</div></section>
@@ -50,12 +54,6 @@ pre{margin:0;background:#111b21;color:#dce9e8;border-radius:5px;padding:14px;min
 <section><h2>响应日志</h2><pre id="output">操作日志会显示在这里。</pre></section>
 </div>
 </main>
-<dialog id="candidateModal" class="dialog">
-  <div class="dialog-shell"><div class="dialog-head"><h2>候选审核工作台</h2><button id="closeCandidates" class="icon-button" type="button" title="关闭">×</button></div><div id="candidateModalContent"></div></div>
-</dialog>
-<dialog id="governanceModal" class="dialog">
-  <div class="dialog-shell"><div class="dialog-head"><h2>图谱治理与实体消歧</h2><button id="closeGovernance" class="icon-button" type="button" title="关闭">×</button></div><div id="governanceModalContent"></div></div>
-</dialog>
 <script>
 const $=id=>document.getElementById(id);
 const descriptions={global:'适合询问整体主题、风险和社区总结。',local:'围绕具体实体、关系和证据片段回答。',basic:'使用文本块进行基础向量检索。',drift:'从全局主题出发逐步扩展到局部关系。'};
@@ -72,9 +70,12 @@ function renderEvidence(evidence){
   target.innerHTML=`<div class="evidence-group"><h3>命中实体</h3><div>${entityHtml}</div></div><div class="evidence-group"><h3>Neo4j 图谱关系</h3>${pathHtml}</div><div class="evidence-group"><h3>原始文档来源</h3>${sourceHtml}</div>`;
 }
 function renderTable(target,rows,columns){if(!rows||!rows.length){$(target).innerHTML='<div class="hint" style="padding:12px">暂无数据。</div>';return}let head=columns.map(c=>`<th>${esc(c)}</th>`).join('');let body=rows.map(row=>`<tr>${columns.map(c=>`<td>${esc(typeof row[c]==='object'?JSON.stringify(row[c]):row[c])}</td>`).join('')}</tr>`).join('');$(target).innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`}
-async function refreshStatus(){try{const d=await fetch('/api/module3/status').then(r=>r.json());const indexFiles=await fetch('/api/status').then(r=>r.json());const source=d.activeSource;const sourceText=source?`本次来源：${esc(source.projectId)} / ${esc(source.wikiSpaceId)} / v${esc(source.wikiVersion)}<br>`:'本次来源：尚未同步<br>';const counts=d.counts||{};$('inputs').innerHTML=`${sourceText}EUOS Evidence 快照：${counts.evidenceSnapshots??d.evidenceFiles.length} 个<br>EUOS Wiki 页面：${counts.wikiPages??d.wikiFiles.length} 个<br>Evidence：${counts.evidenceUnits??'0'} 条<br>GraphRAG 输入：${d.graphInputFiles.length} 份${d.prepared?' · 已准备':' · 尚未准备'}`;$('artifacts').innerHTML=indexFiles.files.map(x=>`<span class="artifact">${esc(x)}</span>`).join(' ')||'<span class="hint">尚无本次索引产物。</span>';if(indexFiles.indexed)await loadResults()}catch(e){$('output').textContent='无法连接本地服务：'+e}}
+function setStep(id,done){$(id).className='step'+(done?' done':'')}
+async function refreshStatus(){try{const d=await fetch('/api/module3/status').then(r=>r.json());const prepared=d.prepared;setStep('s1',d.evidenceFiles.length>0);setStep('s2',d.wikiFiles.length>0);setStep('s3',prepared);const indexFiles=await fetch('/api/status').then(r=>r.json());setStep('s4',indexFiles.indexed);$('status').textContent=`模块1 ${d.evidenceFiles.length} 个文件 · 模块2 ${d.wikiFiles.length} 个文件`+ (prepared?' · 已准备输入':'');$('status').className='status'+(d.evidenceFiles.length&&d.wikiFiles.length?'':' warn');$('inputs').innerHTML=`Evidence 文件：${d.evidenceFiles.map(x=>`<span class="artifact">${esc(x)}</span>`).join(' ')||'无'}<br>Wiki 文件：${d.wikiFiles.map(x=>`<span class="artifact">${esc(x)}</span>`).join(' ')||'无'}<br>GraphRAG 输入：${d.graphInputFiles.map(x=>`<span class="artifact">${esc(x)}</span>`).join(' ')||'尚未生成'}`;$('artifacts').innerHTML=indexFiles.files.map(x=>`<span class="artifact">${esc(x)}</span>`).join(' ')||'<span class="hint">尚无 parquet 产物。</span>';if(indexFiles.indexed)await loadResults()}catch(e){$('status').textContent='无法连接本地服务';$('status').className='status warn'}}
 async function loadResults(){try{const d=await fetch('/api/module3/results').then(r=>r.json());renderTable('entities',d.entities,["title","type","description"]);renderTable('relationships',d.relationships,["source","target","weight","description"])}catch(e){$('output').textContent+='\n读取结果失败：'+e}}
-async function runEuosIndex(){const button=$('index');button.disabled=true;$('output').textContent='正在更新 EUOS 输入清单…';try{const prepared=await fetch('/api/module3/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const preparedData=await prepared.json();if(!preparedData.ok)throw Error(preparedData.error||'准备输入失败');$('output').textContent='输入清单已更新，正在运行 GraphRAG 索引…';const response=await fetch('/api/index',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const data=await response.json();$('output').textContent=data.output||data.error||JSON.stringify(data,null,2);if(!data.ok&&data.error)$('answer').textContent=data.error;await refreshStatus()}catch(e){$('output').textContent='运行失败：'+e}finally{button.disabled=false}}
+async function encode(file){const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(binary)}
+async function upload(kind,input,info){const files=[...$(input).files];if(!files.length)return false;$(info).textContent='上传中…';try{let result=[];for(const file of files){const r=await fetch('/api/module3/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,name:file.name,content:await encode(file)})});const d=await r.json();if(!d.ok)throw Error(d.error||'上传失败');result.push(d.name)}$(info).textContent='已选择：'+result.join('、');return true}catch(e){$(info).textContent='上传失败：'+e;throw e}}
+async function runAll(){const button=$('index');if(!$('evidenceFiles').files.length||!$('wikiFiles').files.length){$('status').textContent='请先选择模块 1 和模块 2 文件';$('status').className='status warn';return}button.disabled=true;$('output').textContent='正在上传并准备输入，请等待…';try{await upload('evidence','evidenceFiles','evidenceInfo');await upload('wiki','wikiFiles','wikiInfo');const prepared=await fetch('/api/module3/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const preparedData=await prepared.json();if(!preparedData.ok)throw Error(preparedData.error||'准备输入失败');$('output').textContent='输入准备完成，正在运行 GraphRAG 索引…';const response=await fetch('/api/index',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const data=await response.json();$('output').textContent=data.output||data.error||JSON.stringify(data,null,2);if(!data.ok&&data.error)$('answer').textContent=data.error;await refreshStatus()}catch(e){$('output').textContent='运行失败：'+e;$('status').textContent='运行失败';$('status').className='status warn'}finally{button.disabled=false}}
 async function action(path,button){$(button).disabled=true;$('output').textContent='执行中，请等待…';try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await r.json();$('output').textContent=d.output||d.message||d.error||JSON.stringify(d,null,2);if(!d.ok&&d.error)$('answer').textContent=d.error;await refreshStatus()}catch(e){$('output').textContent=String(e)}finally{$(button).disabled=false}}
 async function loadEuosConfig(){
   try{
@@ -89,18 +90,17 @@ async function syncEuos(){
   try{
     const r=await fetch('/api/module3/euos/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,wikiSpaceId,wikiVersion:rawVersion||null})});
     const d=await r.json();if(!d.ok)throw Error(d.error||'EUOS 拉取失败');
-    $('euosInfo').textContent=`已清理上一轮数据并拉取 Wiki v${d.wikiVersion}：${d.wikiPages} 个页面，${d.evidenceSnapshots} 个 Evidence 快照，${d.evidenceUnits} 条 Evidence。`;
-    $('output').textContent=`已清理上一轮输入、索引产物、缓存和 Module 3 图谱投影。\n\n本次 EUOS 数据已拉取完成\n项目：${d.projectId}\n空间：${d.wikiSpaceId}\n版本：${d.wikiVersion}\nWiki 页面：${d.wikiPages}\nEvidence 快照：${d.evidenceSnapshots}\nEvidence：${d.evidenceUnits}\n\n下一步：点击“开始本次全量索引”。`;
-    resetCachedView();
+    $('euosInfo').textContent=`已拉取 Wiki v${d.wikiVersion}：${d.wikiPages} 个页面，${d.evidenceSnapshots} 个 Evidence 快照，${d.evidenceUnits} 条 Evidence。`;
+    $('output').textContent=`EUOS 数据已拉取完成\n项目：${d.projectId}\n空间：${d.wikiSpaceId}\n版本：${d.wikiVersion}\nWiki 页面：${d.wikiPages}\nEvidence 快照：${d.evidenceSnapshots}\nEvidence：${d.evidenceUnits}\n\n下一步点击“运行索引”。`;
     await refreshStatus();
   }catch(e){$('euosInfo').textContent='EUOS 拉取失败：'+e;$('output').textContent='EUOS 拉取失败：'+e}
   finally{button.disabled=false}
 }
-$('method').onchange=()=>{$('methodHint').textContent=descriptions[$('method').value]};$('index').onclick=runEuosIndex;$('ask').onclick=async()=>{const query=$('query').value.trim();if(!query){$('answer').textContent='请输入问题';return}const button=$('ask');button.disabled=true;$('output').textContent='查询中，请等待…';try{const r=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,method:$('method').value})});const d=await r.json();$('answer').textContent=d.output||d.error||'没有返回结果';$('output').textContent=d.output||d.error||'';renderEvidence(d.evidence)}catch(e){$('answer').textContent='查询失败：'+e;$('output').textContent=String(e);renderEvidence()}finally{button.disabled=false}};$('clear').onclick=()=>{$('query').value='';$('answer').textContent='等待查询。';$('evidenceChain').innerHTML='<span class="hint">执行查询后显示图谱关系和原始文档依据。</span>'};refreshStatus();
+$('method').onchange=()=>{$('methodHint').textContent=descriptions[$('method').value]};$('refresh').onclick=refreshStatus;$('examples').onclick=()=>action('/api/module3/load_examples','examples');$('prepare').onclick=()=>action('/api/module3/prepare','prepare');$('index').onclick=()=>action('/api/index','index');$('evidenceFiles').onchange=()=>upload('evidence','evidenceFiles','evidenceInfo');$('wikiFiles').onchange=()=>upload('wiki','wikiFiles','wikiInfo');$('ask').onclick=async()=>{const query=$('query').value.trim();if(!query){$('answer').textContent='请输入问题';return}const button=$('ask');button.disabled=true;$('output').textContent='查询中，请等待…';try{const r=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,method:$('method').value})});const d=await r.json();$('answer').textContent=d.output||d.error||'没有返回结果';$('output').textContent=d.output||d.error||'';renderEvidence(d.evidence)}catch(e){$('answer').textContent='查询失败：'+e;$('output').textContent=String(e);renderEvidence()}finally{button.disabled=false}};$('clear').onclick=()=>{$('query').value='';$('answer').textContent='等待查询。';$('evidenceChain').innerHTML='<span class="hint">执行查询后显示图谱关系和原始文档依据。</span>'};refreshStatus();
 if ($('syncEuos')) $('syncEuos').onclick=syncEuos;
 loadEuosConfig();
-// EUOS is the only source: prepare the latest published data, index, then sync Neo4j.
-if ($('index')) $('index').onclick=runEuosIndex;
+// Unified module 3 run: upload both selected files, prepare input, index and sync Neo4j.
+if ($('index')) $('index').onclick=runAll;
 function resetCachedView(){
   $('artifacts').innerHTML='<span class="hint">运行本次索引后显示。</span>';
   renderTable('entities',[],[]);
@@ -109,7 +109,8 @@ function resetCachedView(){
   document.body.classList.add('cache-ready');
 }
 setTimeout(resetCachedView,800);
-// Governed graph POC controls.
+// Governed graph POC controls. Kept here so the new UTF-8 UI can coexist with
+// the legacy demo markup while the latter is gradually cleaned up.
 const governedStyle=document.createElement('style');
 governedStyle.textContent=`
 .governed-row{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.governed-row>*{flex:1;min-width:140px}
@@ -143,7 +144,7 @@ hopsSelect.id='maxHops';hopsSelect.className='scope-select';
 hopsSelect.innerHTML='<option value="1">1 跳</option><option value="2">2 跳</option><option value="3" selected>3 跳</option><option value="4">4 跳</option><option value="5">5 跳</option><option value="6">6 跳</option>';
 scopeSelect.insertAdjacentElement('afterend',hopsSelect);
 scopeSelect.insertAdjacentElement('afterend',hopsLabel);
-const governedSection=document.createElement('div');
+const governedSection=document.createElement('section');
 governedSection.id='governedGraph';
 governedSection.innerHTML=`
   <div class="governed-row"><h2>候选审核</h2><div class="actions"><button id="refreshCandidates" class="secondary">刷新候选</button><button id="syncGoverned">同步候选图谱</button></div></div>
@@ -153,7 +154,7 @@ governedSection.innerHTML=`
     <div><label for="candidateFilter">状态</label><select id="candidateFilter"><option value="">全部</option><option>Candidate</option><option>Accepted</option><option>Rejected</option><option>Stale</option></select></div>
   </div>
   <div id="candidateList" class="table-wrap" style="margin-top:12px"><div class="hint" style="padding:12px">同步 Neo4j 后显示候选。</div></div>`;
-$('candidateModalContent').appendChild(governedSection);
+document.querySelector('.content').insertBefore(governedSection,$('output').parentElement);
 function candidateProvenance(item){
   const wiki=(item.wikis||[]).map(x=>`${x.title||x.id} v${x.version??''}`).join('\n')||'无';
   const units=(item.text_units||[]).map(x=>x.id).join('\n')||'无';
@@ -191,8 +192,6 @@ async function submitReview(candidateId,status){
 }
 $('refreshCandidates').onclick=()=>loadCandidates().catch(e=>{$('output').textContent='读取候选失败：'+e});
 $('candidateFilter').onchange=()=>$('refreshCandidates').click();
-$('openCandidates').onclick=()=>{$('candidateModal').showModal();loadCandidates().catch(e=>{$('output').textContent='读取候选失败：'+e})};
-$('closeCandidates').onclick=()=>$('candidateModal').close();
 $('syncGoverned').onclick=async()=>{
   const b=$('syncGoverned');b.disabled=true;$('output').textContent='正在同步候选图谱…';
   try{const r=await fetch('/api/neo4j/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await r.json();if(!d.ok)throw Error(d.error||'同步失败');$('output').textContent=`同步完成：${d.entities} 个实体候选，${d.relationships} 个关系候选；正式关系 ${d.published.relationships}。`;await loadCandidates()}catch(e){$('output').textContent='同步失败：'+e}finally{b.disabled=false}
