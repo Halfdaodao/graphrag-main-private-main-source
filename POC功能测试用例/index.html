@@ -1,0 +1,2679 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>GraphRAG POC 功能测试用例 - GraphRAG</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+        <script src="https://wcpstatic.microsoft.com/mscc/lib/v2/wcp-consent.js"></script>
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#graphrag-poc" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="GraphRAG" class="md-header__button md-logo" aria-label="GraphRAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19.375 8.5a3.25 3.25 0 1 1-3.163 4h-3a3.252 3.252 0 0 1-4.443 2.509L7.214 17.76a3.25 3.25 0 1 1-1.342-.674l1.672-2.957A3.24 3.24 0 0 1 6.75 12c0-.907.371-1.727.97-2.316L6.117 6.846A3.253 3.253 0 0 1 1.875 3.75a3.25 3.25 0 1 1 5.526 2.32l1.603 2.836A3.25 3.25 0 0 1 13.093 11h3.119a3.25 3.25 0 0 1 3.163-2.5M10 10.25a1.75 1.75 0 1 0-.001 3.499A1.75 1.75 0 0 0 10 10.25M5.125 2a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5m12.5 9.75a1.75 1.75 0 1 0 3.5 0 1.75 1.75 0 0 0-3.5 0m-14.25 8.5a1.75 1.75 0 1 0 3.501-.001 1.75 1.75 0 0 0-3.501.001"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            GraphRAG
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              GraphRAG POC 功能测试用例
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/microsoft/graphrag" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    graphrag
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href=".." class="md-tabs__link">
+          
+  
+  
+  Home
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../index/overview/" class="md-tabs__link">
+          
+  
+  
+  Indexing
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../prompt_tuning/overview/" class="md-tabs__link">
+          
+  
+  
+  Prompt Tuning
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../query/overview/" class="md-tabs__link">
+          
+  
+  
+  Query
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../config/overview/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../blog_posts/" class="md-tabs__link">
+          
+  
+  
+  Extras
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="GraphRAG" class="md-nav__button md-logo" aria-label="GraphRAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19.375 8.5a3.25 3.25 0 1 1-3.163 4h-3a3.252 3.252 0 0 1-4.443 2.509L7.214 17.76a3.25 3.25 0 1 1-1.342-.674l1.672-2.957A3.24 3.24 0 0 1 6.75 12c0-.907.371-1.727.97-2.316L6.117 6.846A3.253 3.253 0 0 1 1.875 3.75a3.25 3.25 0 1 1 5.526 2.32l1.603 2.836A3.25 3.25 0 0 1 13.093 11h3.119a3.25 3.25 0 0 1 3.163-2.5M10 10.25a1.75 1.75 0 1 0-.001 3.499A1.75 1.75 0 0 0 10 10.25M5.125 2a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5m12.5 9.75a1.75 1.75 0 1 0 3.5 0 1.75 1.75 0 0 0-3.5 0m-14.25 8.5a1.75 1.75 0 1 0 3.501-.001 1.75 1.75 0 0 0-3.501.001"/></svg>
+
+    </a>
+    GraphRAG
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/microsoft/graphrag" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    graphrag
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Home
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../developing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indexing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Indexing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index/default_dataflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dataflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index/methods/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index/inputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index/outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Outputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index/byog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Graphs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt Tuning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Prompt Tuning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompt_tuning/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompt_tuning/auto_prompt_tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auto Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompt_tuning/manual_prompt_tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manual Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Query
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query/global_search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Global Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query/local_search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query/drift_search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRIFT Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query/question_generation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Question Generation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notebooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Notebooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query/notebooks/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples_notebooks/global_search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Global Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples_notebooks/local_search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples_notebooks/drift_search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRIFT Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config/init/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Init Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config/yaml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Detailed Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language Model Selection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extras
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extras
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../blog_posts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Research Blog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../visualization_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_7_3" id="__nav_7_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operation Dulce
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operation Dulce
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/operation_dulce/ABOUT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/operation_dulce/Operation%20Dulce%20v2%201%201/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Document
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 测试范围
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 冒烟与服务连通性
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 数据接入与输入准备
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 索引与候选图谱生成
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 审核工作流与双层图谱
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Evidence 版本变更与失效传播
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 正式混合查询
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 图谱治理页面操作案例
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. 图谱治理页面操作案例">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 页面功能清单
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-graph-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2 Graph Profile 案例
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3 实体消歧 / 别名审核案例
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4 治理快照与质量报告案例
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. 图谱治理接口
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 页面其他功能与回归
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. 通过标准
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="graphrag-poc">GraphRAG POC 功能测试用例</h1>
+<h2 id="1">1. 测试范围</h2>
+<p>本手册覆盖本项目的前端、GraphRAG 索引和四种检索方式、EUOS 已发布数据接入、候选图谱审核、Neo4j Extracted/Published 双层图谱、Evidence 失效传播、治理接口和异常处理。</p>
+<p>测试地址：<code>http://127.0.0.1:8767</code></p>
+<p>前置条件：</p>
+<ol>
+<li>前端服务、Embedding Service、Neo4j、EUOS Knowledge Service 均已启动。</li>
+<li>浏览器打开测试地址，页面不显示乱码。</li>
+<li>EUOS 服务令牌已在本机 <code>.env</code> 配置；测试记录或截图中不得包含令牌、密码或其他敏感配置。</li>
+<li>当前已接入的 EUOS 数据可使用：</li>
+<li>项目 ID：<code>local-project</code></li>
+<li>Wiki Space ID：<code>wiki-multi-snapshot-regression-v2</code></li>
+<li>执行索引会调用模型且耗时较长。除索引用例外，其余用例不需要重新索引。</li>
+</ol>
+<p>记录字段：执行日期、执行人、结果（通过/失败/阻塞）、实际结果、截图或接口响应文件、缺陷编号。</p>
+<h2 id="2">2. 冒烟与服务连通性</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>功能</th>
+<th>操作步骤</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SMK-01</td>
+<td>前端访问</td>
+<td>浏览器访问测试地址。</td>
+<td>页面正常加载，中文文本正常显示，无空白页或乱码。</td>
+</tr>
+<tr>
+<td>SMK-02</td>
+<td>前端状态刷新</td>
+<td>刷新页面或点击“刷新治理数据”。</td>
+<td>显示 EUOS Evidence/Wiki 数量、输入准备状态和 parquet 索引产物状态。</td>
+</tr>
+<tr>
+<td>SMK-03</td>
+<td>Embedding 服务</td>
+<td>访问 <code>http://127.0.0.1:8009/health</code>。</td>
+<td>HTTP 200，返回 <code>status: ok</code>、模型名和向量维度。</td>
+</tr>
+<tr>
+<td>SMK-04</td>
+<td>Neo4j 配置</td>
+<td>调用 <code>GET /api/neo4j/config</code>。</td>
+<td>HTTP 200，返回 Neo4j URI、用户和数据库名；不返回密码。</td>
+</tr>
+<tr>
+<td>SMK-05</td>
+<td>EUOS 配置</td>
+<td>页面检查 EUOS 配置提示，或调用 <code>GET /api/module3/euos/config</code>。</td>
+<td>服务地址正确，<code>tokenConfigured</code> 为 <code>true</code>；令牌值不出现在响应中。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3">3. 数据接入与输入准备</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>功能</th>
+<th>操作步骤</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DAT-05</td>
+<td>EUOS 同步当前版本</td>
+<td>填写 <code>local-project</code>、<code>wiki-multi-snapshot-regression-v2</code>，Wiki 版本留空，点击“从 EUOS 拉取”。</td>
+<td>返回当前已发布 Wiki 版本、Wiki 页面数、Evidence 快照数和 Evidence 条数；页面状态更新。</td>
+</tr>
+<tr>
+<td>DAT-06</td>
+<td>EUOS 同步指定版本</td>
+<td>输入一个存在的历史 Wiki 版本后同步。</td>
+<td>拉取该指定版本的数据；返回版本号与输入一致。</td>
+</tr>
+<tr>
+<td>DAT-07</td>
+<td>EUOS 参数校验</td>
+<td>留空项目 ID 或 Wiki Space ID 后点击拉取。</td>
+<td>前端不发起有效同步，提示两个字段必填。</td>
+</tr>
+<tr>
+<td>DAT-08</td>
+<td>EUOS 不存在资源</td>
+<td>使用不存在的 Space ID 或版本号调用同步。</td>
+<td>返回明确错误；已有已同步 EUOS 数据不被清空。</td>
+</tr>
+<tr>
+<td>DAT-09</td>
+<td>生成 GraphRAG 输入</td>
+<td>在已有 Evidence 与 Wiki 后点击“准备输入”。</td>
+<td>成功生成 manifest 和 GraphRAG 输入文件；状态显示“已准备输入”。</td>
+</tr>
+<tr>
+<td>DAT-10</td>
+<td>缺少输入准备</td>
+<td>在新环境中未同步 EUOS 数据时点击“对已同步 EUOS 数据运行索引”。</td>
+<td>返回缺少已发布 Wiki/Evidence 的明确错误。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4">4. 索引与候选图谱生成</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>功能</th>
+<th>操作步骤</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IDX-01</td>
+<td>首次全量索引</td>
+<td>在独立干净数据目录或首次环境中，准备输入后点击“运行索引”。</td>
+<td>显示执行过程并完成；生成 <code>entities.parquet</code>、<code>relationships.parquet</code>、<code>text_units.parquet</code> 等产物。</td>
+</tr>
+<tr>
+<td>IDX-02</td>
+<td>增量索引</td>
+<td>在 IDX-01 成功后，只新增或修改一份 Wiki/Evidence，重新准备输入并运行索引。</td>
+<td>输出标记为“增量更新”；只处理新增或变化文档，原有有效产物仍可查询。</td>
+</tr>
+<tr>
+<td>IDX-03</td>
+<td>索引失败可诊断性</td>
+<td>暂停 Embedding Service 后运行索引，测试后立即恢复服务。</td>
+<td>索引失败，页面展示可定位的连接错误或命令输出；服务恢复后可再次索引。</td>
+</tr>
+<tr>
+<td>IDX-04</td>
+<td>自动候选同步</td>
+<td>索引成功后点击“同步候选图谱”，或确认索引后的自动同步结果。</td>
+<td>Neo4j 中生成实体候选、关系候选、Extracted 实体/关系、Wiki、Text Unit 和 Evidence。</td>
+</tr>
+<tr>
+<td>IDX-05</td>
+<td>候选来源完整性</td>
+<td>在“候选审核”中任选实体候选和关系候选。</td>
+<td>每项显示对应 Wiki、Text Unit、Evidence；关系候选可追溯其源和目标实体。</td>
+</tr>
+<tr>
+<td>IDX-06</td>
+<td>产物结果查看</td>
+<td>索引后调用 <code>GET /api/module3/results</code>。</td>
+<td>返回 entities、relationships、communities、community_reports 和 manifest；中文字段可正常解析。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="5">5. 审核工作流与双层图谱</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>功能</th>
+<th>操作步骤</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>REV-01</td>
+<td>候选默认状态</td>
+<td>同步候选后筛选“Candidate”。</td>
+<td>新生成且未审核的候选状态为 <code>Candidate</code>。</td>
+</tr>
+<tr>
+<td>REV-02</td>
+<td>接受实体候选</td>
+<td>填写审核人和理由，选择一个实体候选点击“接受”。</td>
+<td>状态变为 <code>Accepted</code>，保存审核人、理由和审核时间；正式层出现对应 PublishedEntity。</td>
+</tr>
+<tr>
+<td>REV-03</td>
+<td>拒绝候选</td>
+<td>填写审核人和理由，选择一个候选点击“拒绝”。</td>
+<td>状态变为 <code>Rejected</code>，保存审核记录；该候选不进入 Published。</td>
+</tr>
+<tr>
+<td>REV-04</td>
+<td>审核人必填</td>
+<td>审核人留空，尝试接受或拒绝。</td>
+<td>前端阻止提交或接口返回必填错误；状态不改变。</td>
+</tr>
+<tr>
+<td>REV-05</td>
+<td>关系无 Evidence 禁止发布</td>
+<td>找到没有 Evidence 的关系候选，尝试点击“接受”，或直接调用审核接口。</td>
+<td>前端“接受”按钮不可用；接口也拒绝 <code>Accepted</code>，关系不会进入 Published。</td>
+</tr>
+<tr>
+<td>REV-06</td>
+<td>关系有 Evidence 发布</td>
+<td>选择有 Evidence 的关系候选并接受。</td>
+<td>关系状态为 <code>Accepted</code>；正式层产生 <code>PUBLISHED_RELATION</code>，并带审核字段与 Evidence ID。</td>
+</tr>
+<tr>
+<td>REV-07</td>
+<td>审核筛选</td>
+<td>分别选择 Candidate、Accepted、Rejected、Stale 和全部。</td>
+<td>列表只显示对应状态，切换后无旧数据残留。</td>
+</tr>
+<tr>
+<td>REV-08</td>
+<td>Published 重建</td>
+<td>对若干候选接受、拒绝后再次点击“同步候选图谱”。</td>
+<td>正式层只包含 Accepted 且证据有效的实体/关系；Rejected 不会被重新发布。</td>
+</tr>
+<tr>
+<td>REV-09</td>
+<td>Extracted 与 Published 隔离</td>
+<td>Neo4j Browser 中分别查询 <code>ExtractedEntity</code>、<code>EntityCandidate</code>、<code>PublishedEntity</code>。</td>
+<td>自动抽取结果保留在 Extracted；正式结果只在 Published；两层标签和关系不混用。</td>
+</tr>
+</tbody>
+</table>
+<p>建议 Neo4j 核查语句：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">MATCH</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">:</span><span class="n">ExtractedEntity</span><span class="w"> </span><span class="p">{</span><span class="n">graph_origin</span><span class="p">:</span><span class="s">&#39;module3&#39;</span><span class="p">})</span><span class="w"> </span><span class="k">RETURN</span><span class="w"> </span><span class="n">count</span><span class="p">(</span><span class="n">e</span><span class="p">);</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">MATCH</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">:</span><span class="n">PublishedEntity</span><span class="w"> </span><span class="p">{</span><span class="n">graph_origin</span><span class="p">:</span><span class="s">&#39;module3&#39;</span><span class="p">})</span><span class="w"> </span><span class="k">RETURN</span><span class="w"> </span><span class="n">count</span><span class="p">(</span><span class="n">e</span><span class="p">);</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">MATCH</span><span class="w"> </span><span class="p">()</span><span class="o">-[</span><span class="n">r</span><span class="p">:</span><span class="n">PUBLISHED_RELATION</span><span class="w"> </span><span class="p">{</span><span class="n">graph_origin</span><span class="p">:</span><span class="s">&#39;module3&#39;</span><span class="p">}</span><span class="o">]-&gt;</span><span class="p">()</span><span class="w"> </span><span class="k">RETURN</span><span class="w"> </span><span class="n">count</span><span class="p">(</span><span class="n">r</span><span class="p">);</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">MATCH</span><span class="w"> </span><span class="p">(</span><span class="n">c</span><span class="p">:</span><span class="n">RelationshipCandidate</span><span class="w"> </span><span class="p">{</span><span class="n">graph_origin</span><span class="p">:</span><span class="s">&#39;module3&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">status</span><span class="p">:</span><span class="s">&#39;Accepted&#39;</span><span class="p">})</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="k">WHERE</span><span class="w"> </span><span class="n">size</span><span class="p">(</span><span class="n">coalesce</span><span class="p">(</span><span class="n">c</span><span class="p">.</span><span class="n">evidence_ids</span><span class="p">,</span><span class="w"> </span><span class="o">[]</span><span class="p">))</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="k">RETURN</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
+</code></pre></div>
+<p>最后一条查询应返回 0 行。</p>
+<h2 id="6-evidence">6. Evidence 版本变更与失效传播</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>功能</th>
+<th>操作步骤</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>STL-01</td>
+<td>失效传播触发</td>
+<td>先接受一条带 Evidence 的关系；修改其关联 Wiki 或 Evidence 内容/版本后，重新准备输入、索引并同步候选。</td>
+<td>该旧候选或旧关系标记为 <code>Stale</code>，并记录“Wiki or Evidence version changed”或等价失效原因。</td>
+</tr>
+<tr>
+<td>STL-02</td>
+<td>失效关系退出正式层</td>
+<td>在 STL-01 后检查 Published 和“只看正式”查询。</td>
+<td>Stale 关系不再出现在 <code>PUBLISHED_RELATION</code>，不进入正式查询路径。</td>
+</tr>
+<tr>
+<td>STL-03</td>
+<td>失效候选可见性</td>
+<td>筛选 <code>Stale</code>。</td>
+<td>可看到旧候选、审核历史和失效原因；不会被当作可发布候选。</td>
+</tr>
+<tr>
+<td>STL-04</td>
+<td>消失关系传播</td>
+<td>从输入中删除一个已接受关系的来源，再次索引与同步。</td>
+<td>该候选变为 <code>Stale</code>，原因包含“不再存在于最新 GraphRAG 输出”或等价描述。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7">7. 正式混合查询</h2>
+<p>测试问题建议优先使用当前 EUOS 数据中已有的设备、维护、风险、流程等关键词；先用“候选审核”表中可见的实体名称拼接问题，保证可命中。</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>功能</th>
+<th>操作步骤</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>QRY-01</td>
+<td>检索方式中文化</td>
+<td>展开“检索方式”。</td>
+<td>显示“全局检索（主题检索）”“局部检索（实体关系检索）”“基础检索（文本向量检索）”“渐进检索（混合检索）”，并有对应简介。</td>
+</tr>
+<tr>
+<td>QRY-02</td>
+<td>全局检索</td>
+<td>选择全局检索，输入跨文档概览问题，点击执行查询。</td>
+<td>显示执行阶段、自然语言答案、路径数、Evidence 引文数和状态。</td>
+</tr>
+<tr>
+<td>QRY-03</td>
+<td>局部检索</td>
+<td>选择局部检索，输入某实体及其关系问题。</td>
+<td>答案围绕具体实体，返回相关多跳路径及 Evidence。</td>
+</tr>
+<tr>
+<td>QRY-04</td>
+<td>基础检索</td>
+<td>选择基础检索，输入可在原文中核对的事实问题。</td>
+<td>返回基于 Text Unit 的答案和可追溯 Evidence。</td>
+</tr>
+<tr>
+<td>QRY-05</td>
+<td>渐进检索</td>
+<td>选择渐进检索，输入需结合主题和关系的复杂问题。</td>
+<td>返回 GraphRAG 答案、Neo4j 路径和 Evidence；页面显示“渐进检索（混合检索）”。</td>
+</tr>
+<tr>
+<td>QRY-06</td>
+<td>查询进度展示</td>
+<td>任意查询执行期间观察输出区。</td>
+<td>按顺序显示 GraphRAG 启动、生成答案、Neo4j 多跳检索、Evidence 汇总等阶段，按钮不可重复点击。</td>
+</tr>
+<tr>
+<td>QRY-07</td>
+<td>正式范围</td>
+<td>图谱范围选择“只看正式”，执行可命中已接受关系的问题。</td>
+<td>路径和 Evidence 仅来自 Published；返回的候选状态为正式/已接受。</td>
+</tr>
+<tr>
+<td>QRY-08</td>
+<td>包含待审核范围</td>
+<td>图谱范围选择“包含待审核”，用同一问题执行。</td>
+<td>结果可包含 Candidate/Rejected/Stale 的 Extracted 结果及其状态；正式层结果仍标识为 Accepted。</td>
+</tr>
+<tr>
+<td>QRY-09</td>
+<td>最大跳数</td>
+<td>对同一问题依次选择 1 跳、3 跳、6 跳执行。</td>
+<td>响应中的 <code>max_hops</code> 与选择一致；任一路径长度不超过设置值。</td>
+</tr>
+<tr>
+<td>QRY-10</td>
+<td>最大跳数边界</td>
+<td>通过接口传 <code>maxHops: 0</code>、<code>7</code>、<code>abc</code>。</td>
+<td>返回明确参数错误，不执行查询。</td>
+</tr>
+<tr>
+<td>QRY-11</td>
+<td>空问题</td>
+<td>查询框留空点击执行。</td>
+<td>提示“请输入问题”，不调用 GraphRAG。</td>
+</tr>
+<tr>
+<td>QRY-12</td>
+<td>混合查询 API 契约</td>
+<td>调用 <code>POST /api/hybrid-query</code>，请求体含 <code>query</code>、<code>method</code>、<code>scope</code>、<code>maxHops</code>。</td>
+<td>响应含 <code>ok</code>、<code>answer</code>、<code>paths</code>、<code>evidence</code>、<code>candidate_states</code>、<code>scope</code>、<code>max_hops</code>；失败时包含可诊断错误。</td>
+</tr>
+</tbody>
+</table>
+<p>示例请求：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;请说明某个已审核设备实体与维护流程的关系，并给出依据。&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;drift&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;published&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">&quot;maxHops&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">}</span>
+</code></pre></div>
+<h2 id="8">8. 图谱治理页面操作案例</h2>
+<p>本节直接对应前端“图谱治理”区域。治理配置先写入本地工作区；Neo4j 在线时同时投影，离线时会在下一次成功同步时投影。</p>
+<h3 id="81">8.1 页面功能清单</h3>
+<table>
+<thead>
+<tr>
+<th>页面区域</th>
+<th>控件</th>
+<th>用途</th>
+<th>测试前提</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Graph Profile</td>
+<td>Profile 名称、实体类型、关系类型、保存并启用 Profile</td>
+<td>定义当前图谱允许的实体/关系类型和审核策略。保存新 Profile 时旧 Profile 自动取消启用。</td>
+<td>已加载页面。</td>
+</tr>
+<tr>
+<td>实体消歧 / 别名审核</td>
+<td>实体下拉框、Canonical Name、别名、审核人、接受消歧</td>
+<td>为 Extracted 实体设定标准名称及别名。</td>
+<td>已有 ExtractedEntity 或索引产物中的实体。</td>
+</tr>
+<tr>
+<td>快照与质量报告</td>
+<td>构建治理快照、快照列表、质量报告</td>
+<td>对当前 GraphRAG 产物创建治理快照，显示实体类型、映射和快照质量统计。</td>
+<td>已准备输入；建议已有索引产物。</td>
+</tr>
+<tr>
+<td>候选审核</td>
+<td>刷新候选、同步候选图谱、审核人、理由、状态筛选、接受/拒绝</td>
+<td>审核 Extracted 候选并重建 Published 正式图谱。</td>
+<td>已有 <code>entities.parquet</code> 和 <code>relationships.parquet</code>。</td>
+</tr>
+<tr>
+<td>GraphRAG 查询</td>
+<td>检索方式、图谱范围、最大跳数、问题、执行查询、清空</td>
+<td>按检索方式和正式范围执行混合问答。</td>
+<td>已完成索引；路径测试需有候选同步结果。</td>
+</tr>
+<tr>
+<td>结果与诊断</td>
+<td>上游输入状态、索引产物、实体表、关系表、查询结果、证据链、响应日志</td>
+<td>查看每一步中间产物、结构化结果和失败原因。</td>
+<td>无。</td>
+</tr>
+</tbody>
+</table>
+<h3 id="82-graph-profile">8.2 Graph Profile 案例</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>操作步骤</th>
+<th>测试数据</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GOV-UI-01</td>
+<td>打开“图谱治理”，点击“刷新治理数据”。</td>
+<td>无。</td>
+<td>Profile 列表、实体下拉、消歧记录、快照和质量报告均加载；任一接口失败时响应日志给出错误。</td>
+</tr>
+<tr>
+<td>GOV-UI-02</td>
+<td>在 Profile 名称填入“设备维护测试 Profile”；实体类型填入 <code>EQUIPMENT,PROCEDURE,FAILURE,OTHER</code>；关系类型填入 <code>RELATED,CAUSES</code>；点击“保存并启用 Profile”。</td>
+<td>如左。</td>
+<td>提示保存成功，列表显示新 Profile、版本号和“启用”；质量报告的 <code>profileId</code> 切换为新 Profile。</td>
+</tr>
+<tr>
+<td>GOV-UI-03</td>
+<td>再创建名称不同的第二个 Profile 并启用，然后刷新治理数据。</td>
+<td><code>安全运维测试 Profile</code>；实体 <code>SAFETY_CONDITION,EVENT,OTHER</code>；关系 <code>RELATED</code>。</td>
+<td>第二个 Profile 为启用状态；第一个 Profile 仍保留但不再显示“启用”。</td>
+</tr>
+<tr>
+<td>GOV-UI-04</td>
+<td>Profile 名称、实体类型、关系类型分别留空后保存。</td>
+<td>空值。</td>
+<td>每种情况均提示“Profile 名称、实体类型和关系类型不能为空”；既有启用 Profile 不变。</td>
+</tr>
+<tr>
+<td>GOV-UI-05</td>
+<td>输入小写、重复值、两侧空格后保存，例如 <code>equipment, Equipment, other</code>。</td>
+<td>如左。</td>
+<td>保存后实体/关系类型去重、去空格并转大写。</td>
+</tr>
+</tbody>
+</table>
+<h3 id="83">8.3 实体消歧 / 别名审核案例</h3>
+<p>先点击“刷新治理数据”。从“实体”下拉框选择一个当前 Extracted 实体，以下用 <code>&lt;实体ID&gt;</code>、<code>&lt;原始实体名&gt;</code> 表示实际值。</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>操作步骤</th>
+<th>测试数据</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GOV-UI-06</td>
+<td>选择一个实体；Canonical Name 填 <code>电梯驱动系统</code>；别名填 <code>电梯驱动,驱动系统,旧驱动名称</code>；审核人填 <code>tester-a</code>；点击“接受消歧”。</td>
+<td>上述示例或根据当前实体调整。</td>
+<td>提示“实体消歧已保存”；消歧列表出现标准名、实体 ID、别名和审核人。</td>
+</tr>
+<tr>
+<td>GOV-UI-07</td>
+<td>再次选择同一实体，改 Canonical Name 或别名后保存。</td>
+<td>Canonical Name：<code>电梯主驱动系统</code>。</td>
+<td>同一实体只保留最新的一条消歧记录，审核时间更新，不产生重复记录。</td>
+</tr>
+<tr>
+<td>GOV-UI-08</td>
+<td>刷新治理数据，查看实体下拉框中的该实体。</td>
+<td>无。</td>
+<td>优先显示 Canonical Name，仍可辨识实体类型。</td>
+</tr>
+<tr>
+<td>GOV-UI-09</td>
+<td>Canonical Name 或审核人留空后点击“接受消歧”。</td>
+<td>空值。</td>
+<td>页面提示保存失败；不会新增/覆盖消歧记录。</td>
+</tr>
+<tr>
+<td>GOV-UI-10</td>
+<td>Neo4j 在线时，在完成 GOV-UI-06 后检查该实体。</td>
+<td>Cypher 见下。</td>
+<td><code>ExtractedEntity</code> 保存 <code>canonical_name</code>、<code>aliases</code>、<code>resolution_status</code>、<code>resolution_reviewer</code> 和审核时间。</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">MATCH</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">:</span><span class="n">ExtractedEntity</span><span class="w"> </span><span class="p">{</span><span class="n">id</span><span class="p">:</span><span class="s">&#39;&lt;实体ID&gt;&#39;</span><span class="p">})</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">RETURN</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="n">title</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="n">canonical_name</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="n">aliases</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="n">resolution_status</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">       </span><span class="n">e</span><span class="p">.</span><span class="n">resolution_reviewer</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="n">resolved_at</span><span class="p">;</span>
+</code></pre></div>
+<h3 id="84">8.4 治理快照与质量报告案例</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>操作步骤</th>
+<th>测试数据</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GOV-UI-11</td>
+<td>点击“构建治理快照”。</td>
+<td>已有索引产物。</td>
+<td>按钮执行期间禁用；完成后提示快照 ID，快照列表出现 <code>Ready</code> 或等价完成状态，并显示候选实体、候选关系数量。</td>
+</tr>
+<tr>
+<td>GOV-UI-12</td>
+<td>点击“刷新治理数据”，阅读质量报告。</td>
+<td>已有索引和至少一个 Profile。</td>
+<td>报告至少包含 <code>profileId</code>、<code>entities</code>、<code>relationships</code>、<code>entityTypeCounts</code>、<code>unknownEntityTypes</code>、<code>resolvedEntities</code>、<code>snapshots</code> 和生成时间。</td>
+</tr>
+<tr>
+<td>GOV-UI-13</td>
+<td>使用 GOV-UI-02 中限制较严格的 Profile 构建快照。</td>
+<td>Profile 只允许少量实体类型。</td>
+<td><code>unknownEntityTypes</code> 列出当前索引中不符合 Profile 的类型；无异常时为空数组。</td>
+</tr>
+<tr>
+<td>GOV-UI-14</td>
+<td>停止 Neo4j 后点击“构建治理快照”，记录失败后恢复 Neo4j 并重试。</td>
+<td>服务恢复后重试。</td>
+<td>首次提示可诊断错误；构建记录状态为 <code>Failed</code>；恢复后创建新的 Completed 快照。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="9">9. 图谱治理接口</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>功能</th>
+<th>操作步骤</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GOV-API-01</td>
+<td>Graph Profile 列表和详情</td>
+<td>调用 <code>GET /api/v1/graph-profiles</code>，再调用 <code>GET /api/v1/graph-profiles/&lt;ProfileID&gt;</code>。</td>
+<td>返回 <code>ok: true</code>；存在 ID 返回详情，不存在 ID 返回 404。</td>
+</tr>
+<tr>
+<td>GOV-API-02</td>
+<td>Graph Profile 保存</td>
+<td>调用 <code>POST /api/v1/graph-profiles</code> 创建或更新一个测试 Profile。</td>
+<td>返回保存后的对象，可通过列表和详情接口读取；<code>active: true</code> 时其他 Profile 取消启用。</td>
+</tr>
+<tr>
+<td>GOV-API-03</td>
+<td>实体消歧</td>
+<td>调用 <code>POST /api/v1/graph/entity-resolutions</code>，请求包含实体、标准名、别名、审核人和状态。</td>
+<td>生成消歧记录；相关 ExtractedEntity 保存规范名称、别名及审核字段。</td>
+</tr>
+<tr>
+<td>GOV-API-04</td>
+<td>实体、快照、质量报告</td>
+<td>分别调用 <code>/api/v1/graph/entities</code>、<code>/api/v1/graph/snapshots</code>、<code>/api/v1/graph/quality-report</code>。</td>
+<td>返回结构合法；limit 超过 1000 时按 1000 截断；不存在 ID 返回 404。</td>
+</tr>
+<tr>
+<td>GOV-API-05</td>
+<td>触发治理构建</td>
+<td>调用 <code>POST /api/v1/graph-builds</code>。</td>
+<td>返回构建状态、snapshotId 和候选/正式层计数；失败时保存 <code>Failed</code> 记录和错误原因。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="10">10. 页面其他功能与回归</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>功能</th>
+<th>操作步骤</th>
+<th>预期结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>REG-01</td>
+<td>中文编码回归</td>
+<td>用中文 Evidence/Wiki 执行准备、索引、同步、查询。</td>
+<td>前端、API JSON、GraphRAG 答案、候选表和 Evidence 引文均为正常中文，无 <code>���</code> 或 mojibake。</td>
+</tr>
+<tr>
+<td>REG-02</td>
+<td>Neo4j 端口配置</td>
+<td>确认 Bolt URI 使用 <code>bolt://127.0.0.1:7687</code>，而非 HTTP 端口 <code>7474</code>。执行同步。</td>
+<td>同步成功；无“looks like HTTP”错误。</td>
+</tr>
+<tr>
+<td>REG-03</td>
+<td>服务短暂不可用恢复</td>
+<td>停止 Neo4j 或 EUOS 后执行相应功能，再恢复服务并重试。</td>
+<td>首次请求有明确错误；恢复后无需重启前端即可成功。</td>
+</tr>
+<tr>
+<td>REG-04</td>
+<td>错误请求</td>
+<td>对 EUOS 同步、审核、图谱同步、查询接口提交空 JSON、非法状态和非法 method。</td>
+<td>返回 4xx/错误 JSON；不写入半成品数据，不改变已发布图谱。</td>
+</tr>
+<tr>
+<td>REG-05</td>
+<td>敏感信息</td>
+<td>检查前端页面、浏览器网络响应、日志和 Git 变更。</td>
+<td>不出现 EUOS token、Neo4j 密码、模型密钥；<code>.env</code>、模型、缓存、运行产物不进入 Git。</td>
+</tr>
+<tr>
+<td>REG-06</td>
+<td>浏览器兼容性</td>
+<td>使用 Chrome/Edge 的最新稳定版本完成 SMK-01、DAT-05、REV-02、QRY-05。</td>
+<td>两个浏览器中布局正常、按钮可点击、中文无乱码。</td>
+</tr>
+<tr>
+<td>REG-07</td>
+<td>查询清空</td>
+<td>完成任意查询后点击“清空”。</td>
+<td>问题输入框、查询结果和证据链恢复到初始提示；不删除索引、候选或治理数据。</td>
+</tr>
+<tr>
+<td>REG-08</td>
+<td>结果表刷新</td>
+<td>索引成功后刷新浏览器页面。</td>
+<td>上游输入状态、索引产物、实体表、关系表、候选和治理面板可重新加载；页面不依赖上一轮浏览器内存。</td>
+</tr>
+<tr>
+<td>REG-09</td>
+<td>响应日志</td>
+<td>依次执行 EUOS 同步、索引、候选同步、治理快照和混合查询。</td>
+<td>响应日志展示每次操作的成功/失败摘要；不显示令牌、Neo4j 密码或模型密钥。</td>
+</tr>
+<tr>
+<td>REG-10</td>
+<td>证据链渲染</td>
+<td>对一个能命中正式关系的问题执行混合查询。</td>
+<td>证据链分为命中实体、Neo4j 图谱关系、原始文档来源；每条来源尽量含 Wiki、Evidence ID、章节或正文。</td>
+</tr>
+<tr>
+<td>REG-11</td>
+<td>空数据状态</td>
+<td>在干净测试目录或首次环境加载页面。</td>
+<td>所有列表显示“暂无数据”或等价空状态；刷新、清空等操作不报前端异常。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="11">11. 通过标准</h2>
+<ol>
+<li>SMK、DAT、REV、STL、QRY、REG 用例全部通过，或每个失败项均有已登记且评审接受的缺陷。</li>
+<li>IDX-01 至 IDX-04 至少在一份可追溯的测试数据集上完整通过一次。</li>
+<li>QRY-07 的正式范围不能返回 Stale、Rejected 或无 Evidence 的关系。</li>
+<li>REV-05 的“无 Evidence 关系不能发布”必须在前端和接口两端均验证通过。</li>
+<li>STL-01 至 STL-04 至少验证一条已接受关系的真实版本变更失效链路。</li>
+<li>GOV-UI-01 至 GOV-UI-14 全部通过，确认页面治理功能与对应的本地持久化、Neo4j 投影及质量统计一致。</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      &copy; 2025 Microsoft&nbsp;|&nbsp; <a href="https://go.microsoft.com/fwlink/?LinkId=521839">Privacy</a>&nbsp;|&nbsp; <a href="https://go.microsoft.com/fwlink/?LinkId=2259814">Consumer Heath Privacy</a>&nbsp;|&nbsp; <a onclick="window.manageConsent();">Cookies</a>&nbsp;|&nbsp; <a href="https://go.microsoft.com/fwlink/?LinkID=206977">Terms of Use</a>&nbsp;|&nbsp; <a href="https://www.microsoft.com/trademarks">Trademarks</a>
+
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.select", "navigation.footer", "navigation.tabs"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../scripts/create_cookie_banner.js"></script>
+      
+    
+  </body>
+</html>
