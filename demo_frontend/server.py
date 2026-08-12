@@ -1765,12 +1765,15 @@ def hybrid_query(query: str, method: str, scope: str, max_hops: int = 3) -> dict
     if not config["password"]:
         return result
     from neo4j import GraphDatabase
-    text = f"{query}\n{answer}"
+    # The answer can be long and mention many unrelated concepts. Anchor the
+    # provenance path on entities named in the user's question first.
+    query_text = query.casefold()
+    terms = _query_terms(query)
     if scope == "published":
         cypher = """
             MATCH p=(s:PublishedEntity)-[:PUBLISHED_RELATION*1..6]->(t:PublishedEntity)
             WHERE length(p) <= $max_hops
-              AND ANY(n IN nodes(p) WHERE toLower($text) CONTAINS toLower(n.title))
+              AND ANY(n IN nodes(p) WHERE n.extracted_id IN $anchor_ids)
             RETURN [n IN nodes(p) | {id:n.id,title:n.title,type:n.entity_type,status:n.status}] AS nodes,
                    [r IN relationships(p) | {candidate_id:r.candidate_id,description:r.description,status:r.status,evidence_ids:r.evidence_ids}] AS relationships
             LIMIT 12
@@ -1780,7 +1783,7 @@ def hybrid_query(query: str, method: str, scope: str, max_hops: int = 3) -> dict
             MATCH p=(s:ExtractedEntity)-[:EXTRACTED_RELATION*1..6]->(t:ExtractedEntity)
             WHERE length(p) <= $max_hops
               AND ALL(r IN relationships(p) WHERE r.status IN ['Candidate','Accepted'])
-              AND ANY(n IN nodes(p) WHERE toLower($text) CONTAINS toLower(n.title))
+              AND ANY(n IN nodes(p) WHERE n.id IN $anchor_ids)
             RETURN [n IN nodes(p) | {id:n.id,title:n.title,type:n.entity_type,status:'Extracted'}] AS nodes,
                    [r IN relationships(p) | {candidate_id:r.candidate_id,description:r.description,status:r.status,evidence_ids:r.evidence_ids}] AS relationships
             LIMIT 12
@@ -1788,7 +1791,26 @@ def hybrid_query(query: str, method: str, scope: str, max_hops: int = 3) -> dict
     driver = GraphDatabase.driver(config["uri"], auth=(config["user"], config["password"]))
     try:
         with driver.session(database=config["database"]) as session:
-            paths = [dict(row) for row in session.run(cypher, text=text, max_hops=max_hops)]
+            anchor_rows = list(session.run("""
+                MATCH (e:ExtractedEntity {graph_origin:'module3'})
+                WHERE any(term IN $terms WHERE size(term) >= 2 AND
+                    (toLower(e.title) CONTAINS term OR term CONTAINS toLower(e.title)))
+                RETURN e.id AS id, e.title AS title
+                ORDER BY size(e.title) DESC
+                LIMIT 12
+            """, terms=terms))
+            anchor_ids = [row["id"] for row in anchor_rows]
+            # If no question entity is found, retain the old broad behavior as
+            # a fallback instead of returning an empty graph context.
+            if not anchor_ids:
+                anchor_rows = list(session.run("""
+                    MATCH (e:ExtractedEntity {graph_origin:'module3'})
+                    WHERE toLower($answer) CONTAINS toLower(e.title)
+                    RETURN e.id AS id, e.title AS title
+                    LIMIT 12
+                """, answer=answer))
+                anchor_ids = [row["id"] for row in anchor_rows]
+            paths = [dict(row) for row in session.run(cypher, anchor_ids=anchor_ids, max_hops=max_hops)] if anchor_ids else []
             candidate_ids = sorted({relation["candidate_id"] for path in paths for relation in path["relationships"] if relation.get("candidate_id")})
             evidence_rows = []
             states = []
@@ -1796,9 +1818,16 @@ def hybrid_query(query: str, method: str, scope: str, max_hops: int = 3) -> dict
                 evidence_rows = [dict(row) for row in session.run("""
                     MATCH (c:RelationshipCandidate)-[:SUPPORTED_BY]->(e:Evidence)
                     WHERE c.id IN $ids
-                    RETURN DISTINCT c.id AS candidate_id, c.status AS status, e.evidence_id AS evidence_id,
-                      e.heading AS heading, e.text AS text, e.document_version_id AS document_version_id
+                    OPTIONAL MATCH (c)-[:FROM_WIKI]->(w:WikiPage)
+                    OPTIONAL MATCH (d:SourceDocument)-[:HAS_WIKI]->(w)
+                    OPTIONAL MATCH (c)-[:SOURCE]->(source:ExtractedEntity)
+                    OPTIONAL MATCH (c)-[:TARGET]->(target:ExtractedEntity)
+                    RETURN DISTINCT c.id AS candidate_id, c.status AS status, c.description AS relation_description,
+                      source.title AS source_title, target.title AS target_title,
+                      e.evidence_id AS evidence_id, e.heading AS heading, e.text AS text,
+                      e.document_version_id AS document_version_id, w.title AS wiki_title, d.title AS document_title
                 """, ids=candidate_ids)]
+                evidence_rows = _rank_query_evidence(evidence_rows, query_text, terms)
                 states = [dict(row) for row in session.run(
                     "MATCH (c) WHERE c.id IN $ids RETURN c.id AS candidate_id, c.status AS status, c.reviewer AS reviewer, c.reviewed_at AS reviewed_at",
                     ids=candidate_ids,
@@ -1809,6 +1838,44 @@ def hybrid_query(query: str, method: str, scope: str, max_hops: int = 3) -> dict
     finally:
         driver.close()
     return result
+
+
+def _query_terms(query: str) -> list[str]:
+    """Extract useful terms for local graph and evidence ranking."""
+    raw_terms = re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z][A-Za-z0-9 _-]{1,}", query.casefold())
+    ignored = {"包括什么", "有哪些", "是什么", "哪些业务系统", "系统", "架构", "企业", "中的"}
+    terms = [term.strip() for term in raw_terms if term.strip() not in ignored]
+    return list(dict.fromkeys(terms))
+
+
+def _rank_query_evidence(rows: list[dict], query_text: str, terms: list[str]) -> list[dict]:
+    """Keep a small, query-relevant evidence set instead of dumping every ref."""
+    def score(row: dict) -> int:
+        evidence_text = " ".join(str(row.get(key) or "") for key in ("heading", "text")).casefold()
+        relation_text = " ".join(str(row.get(key) or "") for key in (
+            "relation_description", "source_title", "target_title",
+        )).casefold()
+        # Relation text identifies the candidate; Evidence text decides which
+        # source actually supports this particular question.
+        matched = sum(1 for term in terms if term in evidence_text) * 10
+        matched += sum(1 for term in terms if term in relation_text)
+        entity_bonus = sum(3 for key in ("source_title", "target_title") if str(row.get(key) or "").casefold() in query_text)
+        return matched * 10 + entity_bonus
+
+    ranked = sorted(rows, key=lambda row: (-score(row), str(row.get("candidate_id")), str(row.get("evidence_id"))))
+    kept: list[dict] = []
+    per_candidate: dict[str, int] = {}
+    for row in ranked:
+        candidate_id = str(row.get("candidate_id") or "")
+        if per_candidate.get(candidate_id, 0) >= 2:
+            continue
+        if score(row) <= 0 and kept:
+            continue
+        per_candidate[candidate_id] = per_candidate.get(candidate_id, 0) + 1
+        kept.append(row)
+        if len(kept) >= 8:
+            break
+    return kept
 
 
 def list_graph_entities(limit: int = 200) -> list[dict]:
