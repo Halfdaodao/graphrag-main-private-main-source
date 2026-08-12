@@ -150,7 +150,7 @@ async def generate_text_embeddings(
                 embed_column=field_config.embed_column,
                 batch_size=config.embed_text.batch_size,
                 batch_max_tokens=config.embed_text.batch_max_tokens,
-                num_threads=config.concurrent_requests,
+                num_threads=config.embed_text.concurrent_requests,
                 vector_store=vector_store,
                 output_table=output_table,
             )

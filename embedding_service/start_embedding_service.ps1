@@ -10,6 +10,7 @@ if (-not (Test-Path $python)) {
 # Keep the multi-gigabyte Hugging Face model cache on D: with this project.
 $env:HF_HOME = Join-Path $projectRoot "models\huggingface"
 $env:EMBEDDING_MODEL = Join-Path $projectRoot "models\bge-m3"
+$env:EMBEDDING_ENCODE_BATCH_SIZE = "2"
 # Some corporate networks reset Hugging Face's Xet transfer connections.
 $env:HF_HUB_DISABLE_XET = "1"
 

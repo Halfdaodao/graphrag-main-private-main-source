@@ -24,7 +24,7 @@
 |---|---|---|---|
 | SMK-01 | 前端访问 | 浏览器访问测试地址。 | 页面正常加载，中文文本正常显示，无空白页或乱码。 |
 | SMK-02 | 前端状态刷新 | 刷新页面或点击“刷新治理数据”。 | 显示 EUOS Evidence/Wiki 数量、输入准备状态和 parquet 索引产物状态。 |
-| SMK-03 | Embedding 服务 | 访问 `http://127.0.0.1:8009/health`。 | HTTP 200，返回 `status: ok`、模型名和向量维度。 |
+| SMK-03 | Embedding 服务 | 访问 `http://127.0.0.1:8001/health`。 | HTTP 200，返回 `status: ok`、模型名和向量维度。 |
 | SMK-04 | Neo4j 配置 | 调用 `GET /api/neo4j/config`。 | HTTP 200，返回 Neo4j URI、用户和数据库名；不返回密码。 |
 | SMK-05 | EUOS 配置 | 页面检查 EUOS 配置提示，或调用 `GET /api/module3/euos/config`。 | 服务地址正确，`tokenConfigured` 为 `true`；令牌值不出现在响应中。 |
 

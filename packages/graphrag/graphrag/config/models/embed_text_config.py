@@ -23,6 +23,11 @@ class EmbedTextConfig(BaseModel):
         description="The batch size to use.",
         default=graphrag_config_defaults.embed_text.batch_size,
     )
+    concurrent_requests: int = Field(
+        description="Maximum concurrent embedding requests.",
+        default=1,
+        ge=1,
+    )
     batch_max_tokens: int = Field(
         description="The batch max tokens to use.",
         default=graphrag_config_defaults.embed_text.batch_max_tokens,

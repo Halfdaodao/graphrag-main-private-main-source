@@ -6,6 +6,7 @@ import os
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
+from threading import Lock
 from time import time
 from typing import Any
 
@@ -18,7 +19,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MODEL_ID = "BAAI/bge-m3"
 MODEL_NAME = os.getenv("EMBEDDING_MODEL", str(PROJECT_ROOT / "models" / "bge-m3"))
 MODEL_CACHE = Path(os.getenv("HF_HOME", PROJECT_ROOT / "models" / "huggingface"))
+ENCODE_BATCH_SIZE = max(1, int(os.getenv("EMBEDDING_ENCODE_BATCH_SIZE", "2")))
 model: SentenceTransformer | None = None
+encode_lock = Lock()
 
 
 class EmbeddingRequest(BaseModel):
@@ -52,6 +55,8 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "model": MODEL_ID,
         "dimension": loaded_model.get_sentence_embedding_dimension(),
+        "encodeBatchSize": ENCODE_BATCH_SIZE,
+        "maxConcurrentEncodes": 1,
     }
 
 
@@ -67,12 +72,17 @@ def create_embeddings(request: EmbeddingRequest) -> dict[str, Any]:
     if not inputs or any(not isinstance(item, str) for item in inputs):
         raise HTTPException(status_code=400, detail="input must be a non-empty string or list of strings.")
 
-    vectors = get_model().encode(
-        list(inputs),
-        normalize_embeddings=True,
-        convert_to_numpy=True,
-        show_progress_bar=False,
-    )
+    # SentenceTransformer CPU inference is memory-heavy. GraphRAG sends several
+    # embedding batches concurrently, so serialize model execution to prevent
+    # overlapping allocations from exhausting system RAM.
+    with encode_lock:
+        vectors = get_model().encode(
+            list(inputs),
+            batch_size=ENCODE_BATCH_SIZE,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+        )
     return {
         "object": "list",
         "data": [

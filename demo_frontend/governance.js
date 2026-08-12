@@ -68,8 +68,9 @@
         <div id="qualityReport" class="governance-report" style="margin-top:8px">尚未读取报告。</div>
       </div>
     </div>`;
-  const content = document.querySelector(".content");
-  if (content) content.insertBefore(panel, content.firstElementChild);
+  const modalContent = document.getElementById("governanceModalContent");
+  if (!modalContent) return;
+  modalContent.appendChild(panel);
 
   const $ = (id) => document.getElementById(id);
   const entityOptions = (entities) => entities.map((item) =>
@@ -144,5 +145,10 @@
     } catch (error) { $("output").textContent = `治理快照构建失败：${error}`; }
     finally { button.disabled = false; }
   };
-  setTimeout(() => refresh().catch(() => {}), 900);
+  const governanceModal = $("governanceModal");
+  $("openGovernance").onclick = () => {
+    governanceModal.showModal();
+    refresh().catch((error) => { $("output").textContent = `读取治理数据失败：${error}`; });
+  };
+  $("closeGovernance").onclick = () => governanceModal.close();
 })();

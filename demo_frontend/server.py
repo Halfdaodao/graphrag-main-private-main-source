@@ -15,6 +15,7 @@ import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
@@ -28,6 +29,7 @@ WIKI_DIR = MODULE3_ROOT / "wiki"
 TEST_CASES_ROOT = MODULE3_ROOT / "test_cases"
 GRAPH_INPUT_DIR = MODULE3_ROOT / "graph_input"
 MANIFEST_PATH = MODULE3_ROOT / "manifest.json"
+ACTIVE_EUOS_SOURCE_PATH = MODULE3_ROOT / "active_euos_source.json"
 GOVERNANCE_DIR = MODULE3_ROOT / "governance"
 GRAPH_PROFILES_PATH = GOVERNANCE_DIR / "graph_profiles.json"
 RESOLUTIONS_PATH = GOVERNANCE_DIR / "entity_resolutions.json"
@@ -44,6 +46,7 @@ SECRET_PATTERN = re.compile(r"\b(?:sk|sk-proj)-[A-Za-z0-9_-]+\b")
 REVIEW_STATUSES = {"Candidate", "Accepted", "Rejected", "Stale"}
 MAPPING_STATUSES = {"Candidate", "Accepted", "Rejected", "Stale"}
 RESOLUTION_STATUSES = {"Candidate", "Accepted", "Rejected"}
+INDEX_LOCK = Lock()
 
 DEFAULT_GRAPH_PROFILE = {
     "id": "profile:maintenance-default",
@@ -96,7 +99,10 @@ def _load_local_env() -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"'))
+        # The project-local configuration is authoritative for this service.
+        # This prevents stale parent-process values, especially credentials,
+        # from silently overriding a newly updated .env file.
+        os.environ[key.strip()] = value.strip().strip('"')
 
 
 _load_local_env()
@@ -129,6 +135,60 @@ def run_cli(args: list[str], timeout: int = 1800) -> tuple[int, str]:
     return completed.returncode, output
 
 
+def embedding_service_status() -> tuple[bool, str]:
+    """Verify that the local OpenAI-compatible embedding endpoint can embed text."""
+    base_url = "http://127.0.0.1:8001"
+    try:
+        health_request = Request(f"{base_url}/health", headers={"Accept": "application/json"})
+        with urlopen(health_request, timeout=10) as response:  # noqa: S310 - fixed local endpoint
+            health = json.loads(response.read().decode("utf-8"))
+        if health.get("status") != "ok":
+            return False, "嵌入服务健康检查未通过。"
+
+        payload = json.dumps({
+            "model": "BAAI/bge-m3",
+            "input": "GraphRAG 索引健康检查",
+        }).encode("utf-8")
+        embedding_request = Request(
+            f"{base_url}/v1/embeddings",
+            data=payload,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            method="POST",
+        )
+        with urlopen(embedding_request, timeout=60) as response:  # noqa: S310 - fixed local endpoint
+            embedding = json.loads(response.read().decode("utf-8"))
+        vectors = embedding.get("data") or []
+        if not vectors or not vectors[0].get("embedding"):
+            return False, "嵌入服务没有返回向量。"
+    except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+        return False, f"无法连接本地嵌入服务 http://127.0.0.1:8001：{exc}"
+    return True, "本地 BGE-M3 嵌入服务正常。"
+
+
+def _index_failure_reason(output: str) -> str | None:
+    """Return the most useful GraphRAG failure line, if the pipeline reported one."""
+    failure_markers = (
+        "Pipeline error:",
+        "Failed to validate embedding model",
+        "Embedding configuration error detected",
+        "Connection error",
+        "Traceback",
+    )
+    matches = [
+        line.strip()
+        for line in output.splitlines()
+        if any(marker in line for marker in failure_markers)
+    ]
+    return matches[-1] if matches else None
+
+
+def _has_complete_index_outputs() -> tuple[bool, list[str]]:
+    required = {"entities.parquet", "relationships.parquet", "text_units.parquet"}
+    output_dir = ROOT / "output"
+    files = sorted(path.name for path in output_dir.glob("*.parquet")) if output_dir.exists() else []
+    return required.issubset(files), files
+
+
 def _compact_index_output(output: str) -> str:
     """Keep the browser log useful without dumping GraphRAG dataframes."""
     workflows: list[str] = []
@@ -143,18 +203,25 @@ def _compact_index_output(output: str) -> str:
             name = line.split(":", 1)[1].strip()
             if name not in workflows:
                 workflows.append(name)
-        elif "WARNING" in line or "ERROR" in line or "Traceback" in line:
+        elif (
+            "WARNING" in line
+            or "ERROR" in line
+            or "Traceback" in line
+            or "Pipeline error:" in line
+            or "Failed to validate embedding model" in line
+        ):
             warnings.append(line)
         elif "Pipeline complete" in line:
             workflows.append("Pipeline complete")
-    lines = ["GraphRAG 索引已启动。"]
+    failure = _index_failure_reason(output)
+    lines = ["GraphRAG 索引失败。" if failure else "GraphRAG 索引执行结束。"]
     if workflows:
         lines.append("完成阶段：" + " → ".join(workflows))
-    if warnings:
+    if failure:
+        lines.append("失败原因：" + failure)
+    elif warnings:
         lines.append("注意：")
         lines.extend(warnings[-5:])
-    if "Pipeline complete" not in workflows:
-        lines.append("索引尚未确认完成，请查看服务端日志。")
     return "\n".join(lines)
 
 
@@ -383,6 +450,23 @@ def _record_snapshot(snapshot_id: str, details: dict) -> dict:
     return record
 
 
+def _active_euos_source() -> dict:
+    if not ACTIVE_EUOS_SOURCE_PATH.exists():
+        return {}
+    try:
+        return json.loads(ACTIVE_EUOS_SOURCE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _current_graph_snapshot_id(manifest: dict) -> str:
+    snapshot_key = json.dumps({
+        "input": manifest.get("input", {}),
+        "euosSource": manifest.get("euosSource") or _active_euos_source(),
+    }, ensure_ascii=False, sort_keys=True)
+    return f"module3:{hashlib.sha1(snapshot_key.encode('utf-8')).hexdigest()[:12]}"
+
+
 def list_graph_snapshots() -> list[dict]:
     return sorted(_governance_items(SNAPSHOTS_PATH), key=lambda item: str(item.get("createdAt", "")), reverse=True)
 
@@ -476,6 +560,49 @@ def _load_evidence_units() -> tuple[list[dict], list[dict]]:
         for unit in payload.get("evidenceUnits", []):
             units.append(unit)
     return snapshots, units
+
+
+def _page_evidence_refs(page: dict, evidence_by_id: dict[str, dict]) -> list[dict]:
+    """Merge contract references with EUOS Markdown evidence anchors."""
+
+    refs: list[dict] = []
+    seen: set[str] = set()
+
+    def add_ref(evidence_id: object, snapshot_id: object = "") -> None:
+        evidence_id = str(evidence_id or "").strip()
+        if not evidence_id or evidence_id in seen or evidence_id not in evidence_by_id:
+            return
+        evidence = evidence_by_id[evidence_id]
+        refs.append({
+            "evidenceId": evidence_id,
+            "evidenceSnapshotId": str(
+                snapshot_id or evidence.get("evidenceSnapshotId") or evidence.get("snapshotId") or ""
+            ),
+        })
+        seen.add(evidence_id)
+
+    for ref in page.get("evidenceRefs") or []:
+        if isinstance(ref, dict):
+            add_ref(ref.get("evidenceId"), ref.get("evidenceSnapshotId") or ref.get("snapshotId"))
+
+    body = str(page.get("bodyMarkdown") or "")
+    anchor_pattern = re.compile(
+        r"Evidence:\s*`(?P<evidence_id>[^`]+)`\s*\|\s*"
+        r"evidence://(?P<snapshot_id>[^/\s]+)/(?P<uri_evidence_id>[^#\s]+)",
+        re.IGNORECASE,
+    )
+    for match in anchor_pattern.finditer(body):
+        evidence_id = match.group("evidence_id").strip()
+        if evidence_id == match.group("uri_evidence_id").strip():
+            add_ref(evidence_id, match.group("snapshot_id"))
+
+    for link in page.get("links") or []:
+        evidence_ids = link.get("evidenceIds") or []
+        if isinstance(evidence_ids, str):
+            evidence_ids = re.split(r"[\s,]+", evidence_ids.strip())
+        for evidence_id in evidence_ids:
+            add_ref(evidence_id)
+    return refs
 
 
 def euos_connection_status() -> dict:
@@ -637,6 +764,13 @@ def sync_from_euos(data: dict) -> dict:
     if wiki_version < 1:
         raise ValueError("wikiVersion must be a positive integer")
 
+    # The workspace represents one published EUOS version at a time.
+    # Clear only generated Module 3 inputs before writing the requested source.
+    for directory in (EVIDENCE_DIR, WIKI_DIR, GRAPH_INPUT_DIR):
+        for path in directory.iterdir():
+            if path.is_file():
+                path.unlink()
+
     snapshot = _euos_get(
         "/internal/v1/knowledge/wiki/published-snapshots",
         {"projectId": project_id, "wikiSpaceId": wiki_space_id, "wikiVersion": wiki_version},
@@ -691,19 +825,23 @@ def sync_from_euos(data: dict) -> dict:
 
 def prepare_module3_input() -> dict:
     _ensure_module3_dirs()
+    output_dir = ROOT / "output"
+    if output_dir.exists():
+        for path in output_dir.glob("*.parquet"):
+            path.unlink()
     snapshots, evidence_units = _load_evidence_units()
+    evidence_by_id = {str(unit.get("evidenceId")): unit for unit in evidence_units}
     pages = [_load_wiki_page(path) for path in sorted(WIKI_DIR.iterdir()) if path.suffix.lower() in {".json", ".md"}]
     if not pages:
         raise ValueError("请先导入模块2 WikiPage JSON/Markdown")
-    by_id = {unit.get("evidenceId"): unit for unit in evidence_units}
     for old in GRAPH_INPUT_DIR.glob("*.md"):
         old.unlink()
     entries: list[dict] = []
     for index, page in enumerate(pages):
         title = str(page.get("title") or page.get("wikiPageId") or f"wiki-page-{index}")
         page_id = str(page.get("wikiPageId") or f"wiki:{_safe_slug(title)}")
-        refs = page.get("evidenceRefs") or []
-        linked_units = [by_id[ref.get("evidenceId")] for ref in refs if ref.get("evidenceId") in by_id]
+        refs = _page_evidence_refs(page, evidence_by_id)
+        linked_units = [evidence_by_id[ref["evidenceId"]] for ref in refs]
         links = page.get("links") or []
         lines = [
             f"# {title}",
@@ -740,6 +878,7 @@ def prepare_module3_input() -> dict:
         "contractVersion": "module3-poc-1.0",
         "input": {"evidenceSnapshots": [item.get("evidenceSnapshotId") for item in snapshots], "wikiPages": entries},
         "counts": {"evidenceSnapshots": len(snapshots), "evidenceUnits": len(evidence_units), "wikiPages": len(pages)},
+        "euosSource": _active_euos_source(),
         "graphInputDir": str(GRAPH_INPUT_DIR),
     }
     MANIFEST_PATH.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1301,7 +1440,7 @@ def sync_neo4j(data: dict) -> dict:
     if not page_by_id:
         raise ValueError("No WikiPage input found")
     snapshot_key = json.dumps(manifest.get("input", {}), ensure_ascii=False, sort_keys=True)
-    snapshot_id = f"module3:{hashlib.sha1(snapshot_key.encode('utf-8')).hexdigest()[:12]}"
+    snapshot_id = _current_graph_snapshot_id(manifest)
     profile = _active_graph_profile()
     allowed_entity_types = set(profile["entityTypes"])
     allowed_relation_types = set(profile["relationTypes"])
@@ -1313,6 +1452,8 @@ def sync_neo4j(data: dict) -> dict:
     snapshots, evidence_units = _load_evidence_units()
     snapshots_by_id = {str(item.get("evidenceSnapshotId")): item for item in snapshots}
     evidence_by_id = {str(item.get("evidenceId")): item for item in evidence_units}
+    for page in page_by_id.values():
+        page["evidenceRefs"] = _page_evidence_refs(page, evidence_by_id)
 
     documents: list[dict] = []
     evidences: list[dict] = []
@@ -1431,6 +1572,13 @@ def sync_neo4j(data: dict) -> dict:
                 "CREATE CONSTRAINT text_unit_id IF NOT EXISTS FOR (n:TextUnit) REQUIRE n.id IS UNIQUE",
             ):
                 session.run(statement).consume()
+            # A full EUOS index represents one exact published snapshot. Remove only
+            # Module 3's earlier projection so old candidates cannot leak into review.
+            session.run("""
+                MATCH (n {graph_origin:'module3'})
+                WHERE n.graph_snapshot <> $snapshot
+                DETACH DELETE n
+            """, snapshot=snapshot_id).consume()
             session.run("UNWIND $rows AS row MERGE (n:WikiPage {id:row.id}) SET n.title=row.title, n.page_version=row.page_version, n.evidence_refs=row.evidence_refs, n.graph_origin='module3', n.graph_snapshot=row.snapshot, n.updated_at=datetime()", rows=wikis).consume()
             session.run("UNWIND $rows AS row MERGE (n:Evidence {id:row.id}) SET n.evidence_id=row.evidence_id, n.snapshot_id=row.snapshot_id, n.document_version_id=row.document_version_id, n.heading=row.heading, n.text=row.text, n.graph_origin='module3', n.graph_snapshot=row.snapshot, n.updated_at=datetime()", rows=evidences).consume()
             session.run("UNWIND $rows AS row MERGE (n:SourceDocument {id:row.id}) SET n.document_id=row.document_id, n.document_version_id=row.document_version_id, n.title=row.title, n.graph_origin='module3', n.graph_snapshot=row.snapshot, n.updated_at=datetime()", rows=documents).consume()
@@ -1491,21 +1639,36 @@ def sync_neo4j(data: dict) -> dict:
         driver.close()
 
 
-def list_candidates(filters: dict) -> list[dict]:
+def list_candidates(filters: dict) -> dict:
     config = _neo4j_config(filters)
     if not config["password"]:
         raise ValueError("Neo4j password is not configured")
     kind = str(filters.get("kind") or "all")
     status = str(filters.get("status") or "")
+    try:
+        limit = min(max(int(filters.get("limit") or 50), 1), 200)
+        offset = max(int(filters.get("offset") or 0), 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("limit and offset must be integers") from exc
     labels = {"entity": "EntityCandidate", "relationship": "RelationshipCandidate"}
     if kind not in {"all", *labels}:
         raise ValueError("kind must be entity, relationship, or all")
     if status and status not in REVIEW_STATUSES:
         raise ValueError("Unknown review status")
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8")) if MANIFEST_PATH.exists() else {}
+    snapshot_id = _current_graph_snapshot_id(manifest)
     label_filter = f"c:{labels[kind]}" if kind in labels else "(c:EntityCandidate OR c:RelationshipCandidate)"
     status_filter = " AND c.status=$status" if status else ""
+    count_query = f"""
+        MATCH (c) WHERE {label_filter} AND c.graph_origin='module3' AND c.graph_snapshot=$snapshot{status_filter}
+        RETURN count(c) AS total
+    """
     query = f"""
-        MATCH (c) WHERE {label_filter} AND c.graph_origin='module3'{status_filter}
+        MATCH (c) WHERE {label_filter} AND c.graph_origin='module3' AND c.graph_snapshot=$snapshot{status_filter}
+        WITH c
+        ORDER BY CASE c.status WHEN 'Candidate' THEN 0 WHEN 'Stale' THEN 1 WHEN 'Accepted' THEN 2 ELSE 3 END, c.id DESC
+        SKIP $offset
+        LIMIT $limit
         OPTIONAL MATCH (c)-[:DESCRIBES]->(entity:ExtractedEntity)
         OPTIONAL MATCH (c)-[:SOURCE]->(source:ExtractedEntity)
         OPTIONAL MATCH (c)-[:TARGET]->(target:ExtractedEntity)
@@ -1526,7 +1689,21 @@ def list_candidates(filters: dict) -> list[dict]:
     driver = GraphDatabase.driver(config["uri"], auth=(config["user"], config["password"]))
     try:
         with driver.session(database=config["database"]) as session:
-            return [dict(row) for row in session.run(query, status=status)]
+            params = {
+                "status": status,
+                "snapshot": snapshot_id,
+                "limit": limit,
+                "offset": offset,
+            }
+            total = int(session.run(count_query, **params).single()["total"])
+            items = [dict(row) for row in session.run(query, **params)]
+            return {
+                "items": items,
+                "limit": limit,
+                "offset": offset,
+                "total": total,
+                "hasMore": offset + len(items) < total,
+            }
     finally:
         driver.close()
 
@@ -1706,12 +1883,20 @@ def request_graph_build(data: dict) -> dict:
 def module3_status() -> dict:
     _ensure_module3_dirs()
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8")) if MANIFEST_PATH.exists() else None
+    source = _active_euos_source()
+    snapshots, evidence_units = _load_evidence_units()
     return {
         "evidenceFiles": sorted(path.name for path in EVIDENCE_DIR.glob("*.json")),
         "wikiFiles": sorted(path.name for path in WIKI_DIR.iterdir() if path.suffix.lower() in {".json", ".md"}),
         "prepared": bool(manifest),
         "manifest": manifest,
         "graphInputFiles": sorted(path.name for path in GRAPH_INPUT_DIR.glob("*.md")),
+        "activeSource": source,
+        "counts": {
+            "wikiPages": len([path for path in WIKI_DIR.iterdir() if path.suffix.lower() in {".json", ".md"}]),
+            "evidenceSnapshots": len(snapshots),
+            "evidenceUnits": len(evidence_units),
+        },
     }
 
 
@@ -1725,6 +1910,8 @@ class Handler(BaseHTTPRequestHandler):
             content_type = "application/json; charset=utf-8"
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
+        if content_type.startswith(("text/html", "application/javascript")):
+            self.send_header("Cache-Control", "no-store, max-age=0")
         self.end_headers()
         self.wfile.write(payload)
 
@@ -1813,7 +2000,19 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in {"/api/candidates", "/api/v1/graph-candidates"}:
             query_parts = {key: values[0] for key, values in parse_qs(parsed.query).items() if values}
-            self._send(200, json.dumps({"ok": True, "items": list_candidates(query_parts)}, ensure_ascii=False), "application/json")
+            try:
+                result = list_candidates(query_parts)
+            except Exception as exc:  # noqa: BLE001
+                self._send(
+                    503,
+                    json.dumps(
+                        {"ok": False, "error": f"读取候选失败：{exc}"},
+                        ensure_ascii=False,
+                    ),
+                    "application/json",
+                )
+                return
+            self._send(200, json.dumps({"ok": True, **result}, ensure_ascii=False), "application/json")
             return
         self._send(404, "Not found", "text/plain; charset=utf-8")
 
@@ -1942,19 +2141,59 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(response, ensure_ascii=False), "application/json")
                 return
             elif path == "/api/index":
-                has_existing_index = (ROOT / "output" / "documents.parquet").exists()
-                index_command = "update" if has_existing_index else "index"
-                code, output = run_cli([index_command, "--root", str(ROOT), "--verbose"], timeout=7200)
-                output = _compact_index_output(output)
-                output = ("索引模式：" + ("增量更新（只处理新增或变化的文档）" if has_existing_index else "首次全量索引") + "\n" + output)
-                neo4j_result = None
-                if code == 0:
-                    try:
-                        neo4j_result = sync_neo4j({})
-                        output += "\n\nNeo4j 自动同步完成：" + json.dumps(neo4j_result, ensure_ascii=False)
-                    except Exception as exc:  # noqa: BLE001
-                        neo4j_result = {"ok": False, "error": str(exc)}
-                        output += "\n\nNeo4j 自动同步失败：" + str(exc)
+                if not INDEX_LOCK.acquire(blocking=False):
+                    response = {
+                        "ok": False,
+                        "code": None,
+                        "output": (
+                            "索引模式：本次全量索引（仅当前 EUOS 快照）\n"
+                            "GraphRAG 索引未启动。\n"
+                            "失败原因：已有索引任务正在运行，请等待当前任务结束，勿重复点击。"
+                        ),
+                        "error": "已有索引任务正在运行",
+                        "neo4j": None,
+                    }
+                    self._send(200, json.dumps(response, ensure_ascii=False), "application/json")
+                    return
+                try:
+                    healthy, health_message = embedding_service_status()
+                    if not healthy:
+                        output = (
+                            "索引模式：本次全量索引（仅当前 EUOS 快照）\n"
+                            "GraphRAG 索引未启动。\n"
+                            f"失败原因：{health_message}\n"
+                            "请先运行 embedding_service\\start_embedding_service.ps1，"
+                            "确认 http://127.0.0.1:8001/health 可访问后重试。"
+                        )
+                        response = {"ok": False, "code": None, "output": output, "error": health_message, "neo4j": None}
+                        self._send(200, json.dumps(response, ensure_ascii=False), "application/json")
+                        return
+
+                    code, raw_output = run_cli(["index", "--root", ".", "--verbose"], timeout=7200)
+                    log_path = ROOT / "logs" / "module3-index.log"
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    log_path.write_text(raw_output, encoding="utf-8")
+                    pipeline_failure = _index_failure_reason(raw_output)
+                    complete_outputs, output_files = _has_complete_index_outputs()
+                    confirmed = code == 0 and pipeline_failure is None and complete_outputs
+                    output = "索引模式：本次全量索引（仅当前 EUOS 快照）\n" + _compact_index_output(raw_output)
+                    if not confirmed and pipeline_failure is None:
+                        output += (
+                            "\n失败原因：索引进程没有生成完整产物。"
+                            " 需要 entities.parquet、relationships.parquet、text_units.parquet；"
+                            f"当前产物：{', '.join(output_files) if output_files else '无'}。"
+                        )
+                    neo4j_result = None
+                    if confirmed:
+                        try:
+                            neo4j_result = sync_neo4j({})
+                            output += "\n\nNeo4j 自动同步完成：" + json.dumps(neo4j_result, ensure_ascii=False)
+                        except Exception as exc:  # noqa: BLE001
+                            neo4j_result = {"ok": False, "error": str(exc)}
+                            output += "\n\nNeo4j 自动同步失败：" + str(exc)
+                    code = 0 if confirmed else (code or 1)
+                finally:
+                    INDEX_LOCK.release()
             else:
                 self._send(404, "Not found", "text/plain; charset=utf-8")
                 return

@@ -4,12 +4,17 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $modelDir = Join-Path $projectRoot "models\bge-m3"
 $target = Join-Path $modelDir "pytorch_model.bin"
 $part = Join-Path $modelDir "pytorch_model.bin.part"
+$huggingFaceIncomplete = Join-Path $modelDir "pytorch_model.bin.incomplete"
 $url = "https://hf-mirror.com/BAAI/bge-m3/resolve/main/pytorch_model.bin"
 
 New-Item -ItemType Directory -Force -Path $modelDir | Out-Null
 if ((Test-Path $target) -and ((Get-Item $target).Length -ge 2000000000)) {
     Write-Host "BGE-M3 weights already downloaded."
     exit 0
+}
+
+if (-not (Test-Path $part) -and (Test-Path $huggingFaceIncomplete)) {
+    Move-Item -LiteralPath $huggingFaceIncomplete -Destination $part
 }
 
 Write-Host "Downloading BGE-M3 weights (resumable)..."

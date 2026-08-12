@@ -74,6 +74,10 @@ vector_store:
 
 embed_text:
   embedding_model_id: default_embedding_model
+  # Keep each HTTP payload small; the local embedding service serializes model
+  # execution so GraphRAG cannot create overlapping BGE-M3 memory allocations.
+  batch_size: 4
+  concurrent_requests: 1
 
 extract_graph:
   completion_model_id: default_completion_model
