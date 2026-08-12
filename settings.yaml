@@ -19,6 +19,8 @@ embedding_models:
     model_provider: openai
     model: BAAI/bge-m3
     auth_method: api_key
+    # Reuse the already-loaded local BGE-M3 service to avoid loading a second
+    # multi-gigabyte model process while indexing.
     api_base: http://127.0.0.1:8001/v1
     api_key: local-embedding
     retry:

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import base64
+import ctypes
+import json
 from datetime import UTC, datetime
 import hashlib
 import hmac
@@ -22,19 +23,22 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = Path(__file__).resolve().parent
+LOG_DIR = ROOT / "logs"
 MODULE3_ROOT = ROOT / "module3_workspace"
 EVIDENCE_DIR = MODULE3_ROOT / "evidence"
 WIKI_DIR = MODULE3_ROOT / "wiki"
-TEST_CASES_ROOT = MODULE3_ROOT / "test_cases"
 GRAPH_INPUT_DIR = MODULE3_ROOT / "graph_input"
 MANIFEST_PATH = MODULE3_ROOT / "manifest.json"
 GOVERNANCE_DIR = MODULE3_ROOT / "governance"
 GRAPH_PROFILES_PATH = GOVERNANCE_DIR / "graph_profiles.json"
 RESOLUTIONS_PATH = GOVERNANCE_DIR / "entity_resolutions.json"
-OBJECT_CATALOG_PATH = GOVERNANCE_DIR / "object_catalog.json"
-OBJECT_MAPPINGS_PATH = GOVERNANCE_DIR / "object_mappings.json"
 SNAPSHOTS_PATH = GOVERNANCE_DIR / "graph_snapshots.json"
 BUILDS_PATH = GOVERNANCE_DIR / "graph_builds.json"
+ACTIVE_EUOS_SOURCE_PATH = MODULE3_ROOT / "active_euos_source.json"
+OUTPUT_DIR = ROOT / "output"
+UPDATE_OUTPUT_DIR = ROOT / "update_output"
+CACHE_DIR = ROOT / "cache"
+MODULE3_LANCEDB_DIR = MODULE3_ROOT / "lancedb"
 NEO4J_URI_DEFAULT = "bolt://127.0.0.1:7687"
 NEO4J_USER_DEFAULT = "neo4j"
 NEO4J_DATABASE_DEFAULT = "neo4j"
@@ -42,7 +46,6 @@ EUOS_KNOWLEDGE_URL_DEFAULT = "http://127.0.0.1:8090"
 ALLOWED_METHODS = {"global", "local", "basic", "drift"}
 SECRET_PATTERN = re.compile(r"\b(?:sk|sk-proj)-[A-Za-z0-9_-]+\b")
 REVIEW_STATUSES = {"Candidate", "Accepted", "Rejected", "Stale"}
-MAPPING_STATUSES = {"Candidate", "Accepted", "Rejected", "Stale"}
 RESOLUTION_STATUSES = {"Candidate", "Accepted", "Rejected"}
 
 DEFAULT_GRAPH_PROFILE = {
@@ -61,31 +64,6 @@ DEFAULT_GRAPH_PROFILE = {
         "requireSchemaMatchForPublish": True,
     },
 }
-
-DEFAULT_OBJECT_CATALOG = [
-    {
-        "id": "object:equipment:elevator-001",
-        "type": "EquipmentInstance",
-        "name": "演示电梯 001",
-        "externalRef": "ELEVATOR-001",
-        "status": "Active",
-    },
-    {
-        "id": "object:equipment:engine-1104d-001",
-        "type": "EquipmentInstance",
-        "name": "Perkins 1104D 演示发动机",
-        "externalRef": "ENGINE-1104D-001",
-        "status": "Active",
-    },
-    {
-        "id": "object:workorder:maintenance-001",
-        "type": "WorkOrder",
-        "name": "例行维护工单 001",
-        "externalRef": "WO-001",
-        "status": "Open",
-    },
-]
-
 
 def _load_local_env() -> None:
     env_file = ROOT / ".env"
@@ -129,7 +107,45 @@ def run_cli(args: list[str], timeout: int = 1800) -> tuple[int, str]:
     return completed.returncode, output
 
 
-def _compact_index_output(output: str) -> str:
+def _write_index_log(output: str) -> Path:
+    """Persist the raw CLI output so a failed browser request stays diagnosable."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = LOG_DIR / "module3-index.log"
+    log_path.write_text(output + "\n", encoding="utf-8")
+    return log_path
+
+
+def _available_commit_bytes() -> int | None:
+    """Return Windows system commit headroom; None on unsupported platforms."""
+    if os.name != "nt":
+        return None
+
+    class PerformanceInformation(ctypes.Structure):
+        _fields_ = [
+            ("cb", ctypes.c_ulong),
+            ("commit_total", ctypes.c_size_t),
+            ("commit_limit", ctypes.c_size_t),
+            ("commit_peak", ctypes.c_size_t),
+            ("physical_total", ctypes.c_size_t),
+            ("physical_available", ctypes.c_size_t),
+            ("system_cache", ctypes.c_size_t),
+            ("kernel_total", ctypes.c_size_t),
+            ("kernel_paged", ctypes.c_size_t),
+            ("kernel_nonpaged", ctypes.c_size_t),
+            ("page_size", ctypes.c_size_t),
+            ("handle_count", ctypes.c_ulong),
+            ("process_count", ctypes.c_ulong),
+            ("thread_count", ctypes.c_ulong),
+        ]
+
+    info = PerformanceInformation()
+    info.cb = ctypes.sizeof(info)
+    if not ctypes.windll.psapi.GetPerformanceInfo(ctypes.byref(info), info.cb):
+        return None
+    return (info.commit_limit - info.commit_total) * info.page_size
+
+
+def _compact_index_output(output: str, succeeded: bool) -> str:
     """Keep the browser log useful without dumping GraphRAG dataframes."""
     workflows: list[str] = []
     warnings: list[str] = []
@@ -143,7 +159,10 @@ def _compact_index_output(output: str) -> str:
             name = line.split(":", 1)[1].strip()
             if name not in workflows:
                 workflows.append(name)
-        elif "WARNING" in line or "ERROR" in line or "Traceback" in line:
+        elif any(
+            marker in line
+            for marker in ("WARNING", "ERROR", "Traceback", "MemoryError", "Connection error")
+        ):
             warnings.append(line)
         elif "Pipeline complete" in line:
             workflows.append("Pipeline complete")
@@ -153,8 +172,21 @@ def _compact_index_output(output: str) -> str:
     if warnings:
         lines.append("注意：")
         lines.extend(warnings[-5:])
-    if "Pipeline complete" not in workflows:
-        lines.append("索引尚未确认完成，请查看服务端日志。")
+    if succeeded:
+        lines.append("GraphRAG 索引完成（命令已成功退出）。")
+    else:
+        error_lines = [
+            line.strip()
+            for line in output.splitlines()
+            if line.strip()
+            and any(
+                marker in line
+                for marker in ("ERROR", "Traceback", "Exception", "MemoryError", "Connection error")
+            )
+        ]
+        if error_lines:
+            lines.append("失败原因：" + error_lines[-1])
+        lines.append(f"索引失败。完整日志已写入：{LOG_DIR / 'module3-index.log'}")
     return "\n".join(lines)
 
 
@@ -163,18 +195,88 @@ def _ensure_module3_dirs() -> None:
         EVIDENCE_DIR,
         WIKI_DIR,
         GRAPH_INPUT_DIR,
-        TEST_CASES_ROOT / "module1",
-        TEST_CASES_ROOT / "module2",
         GOVERNANCE_DIR,
     ):
         directory.mkdir(parents=True, exist_ok=True)
     if not GRAPH_PROFILES_PATH.exists():
         _write_json(GRAPH_PROFILES_PATH, [DEFAULT_GRAPH_PROFILE])
-    if not OBJECT_CATALOG_PATH.exists():
-        _write_json(OBJECT_CATALOG_PATH, DEFAULT_OBJECT_CATALOG)
-    for path in (RESOLUTIONS_PATH, OBJECT_MAPPINGS_PATH, SNAPSHOTS_PATH, BUILDS_PATH):
+    for path in (RESOLUTIONS_PATH, SNAPSHOTS_PATH, BUILDS_PATH):
         if not path.exists():
             _write_json(path, [])
+
+
+def _clear_directory_contents(directory: Path) -> int:
+    """Remove generated contents while keeping the directory itself."""
+    directory.mkdir(parents=True, exist_ok=True)
+    removed = 0
+    for child in directory.iterdir():
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+        removed += 1
+    return removed
+
+
+def _reset_module3_run() -> dict:
+    """Start a clean EUOS-only run without removing governance configuration."""
+    removed = {
+        "evidenceFiles": _clear_directory_contents(EVIDENCE_DIR),
+        "wikiFiles": _clear_directory_contents(WIKI_DIR),
+        "graphInputFiles": _clear_directory_contents(GRAPH_INPUT_DIR),
+        "outputItems": _clear_directory_contents(OUTPUT_DIR),
+        "updateOutputItems": _clear_directory_contents(UPDATE_OUTPUT_DIR),
+        "cacheItems": _clear_directory_contents(CACHE_DIR),
+        "module3LanceDbItems": _clear_directory_contents(MODULE3_LANCEDB_DIR),
+    }
+    for path in (MANIFEST_PATH, ACTIVE_EUOS_SOURCE_PATH):
+        if path.exists():
+            path.unlink()
+            removed[path.name] = 1
+        else:
+            removed[path.name] = 0
+    for path in (RESOLUTIONS_PATH, SNAPSHOTS_PATH, BUILDS_PATH):
+        _write_json(path, [])
+        removed[path.name] = 1
+    return removed
+
+
+def _purge_module3_neo4j(data: dict | None = None) -> dict:
+    """Remove only this app's Neo4j projection before a new EUOS snapshot."""
+    config = _neo4j_config(data or {})
+    if not config["password"]:
+        return {"status": "skipped", "reason": "Neo4j password is not configured"}
+    try:
+        from neo4j import GraphDatabase
+    except ImportError:
+        return {"status": "skipped", "reason": "Neo4j Python driver is not installed"}
+    driver = GraphDatabase.driver(config["uri"], auth=(config["user"], config["password"]))
+    try:
+        driver.verify_connectivity()
+        with driver.session(database=config["database"]) as session:
+            record = session.run(
+                """
+                MATCH (n)
+                WHERE n.graph_origin='module3' OR n.graph_snapshot STARTS WITH 'module3:'
+                RETURN count(n) AS node_count
+                """
+            ).single()
+            session.run(
+                "MATCH ()-[r]->() WHERE r.graph_origin='module3' OR r.graph_snapshot STARTS WITH 'module3:' DELETE r"
+            ).consume()
+            session.run(
+                "MATCH (n) WHERE n.graph_origin='module3' OR n.graph_snapshot STARTS WITH 'module3:' DETACH DELETE n"
+            ).consume()
+        return {
+            "status": "cleared",
+            "nodes": int(record["node_count"]) if record else 0,
+            "uri": config["uri"],
+            "database": config["database"],
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "error", "reason": str(exc)}
+    finally:
+        driver.close()
 
 
 def _read_json(path: Path, default: object) -> object:
@@ -242,10 +344,6 @@ def save_graph_profile(data: dict) -> dict:
     return profile
 
 
-def list_object_catalog() -> list[dict]:
-    return _governance_items(OBJECT_CATALOG_PATH)
-
-
 def list_entity_resolutions() -> list[dict]:
     return _governance_items(RESOLUTIONS_PATH)
 
@@ -305,69 +403,6 @@ def save_entity_resolution(data: dict) -> dict:
     return resolution
 
 
-def list_object_mappings() -> list[dict]:
-    return _governance_items(OBJECT_MAPPINGS_PATH)
-
-
-def save_object_mapping(data: dict) -> dict:
-    entity_id = str(data.get("entityId") or "").strip()
-    object_id = str(data.get("objectId") or "").strip()
-    reviewer = str(data.get("reviewer") or "").strip()
-    status = str(data.get("status") or "Candidate").strip()
-    if not entity_id or not object_id or not reviewer or status not in MAPPING_STATUSES:
-        raise ValueError("entityId、objectId、reviewer 和合法 status 为必填项")
-    object_item = next((item for item in list_object_catalog() if item.get("id") == object_id), None)
-    if object_item is None:
-        raise ValueError("业务对象不存在")
-    mappings = list_object_mappings()
-    mapping = {
-        "id": _stable_id("object-mapping", entity_id, object_id),
-        "entityId": entity_id,
-        "objectId": object_id,
-        "objectName": object_item["name"],
-        "objectType": object_item["type"],
-        "status": status,
-        "reviewer": reviewer,
-        "reason": str(data.get("reason") or "").strip(),
-        "reviewedAt": _now_iso(),
-    }
-    mappings = [item for item in mappings if item.get("id") != mapping["id"]]
-    mappings.append(mapping)
-    _write_json(OBJECT_MAPPINGS_PATH, mappings)
-    config = _neo4j_config(data)
-    if config["password"]:
-        try:
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(config["uri"], auth=(config["user"], config["password"]))
-            try:
-                with driver.session(database=config["database"]) as session:
-                    session.run(
-                        """
-                        MATCH (e:ExtractedEntity {id:$entity_id})
-                        MERGE (o:BusinessObject {id:$object_id})
-                        SET o.name=$object_name, o.object_type=$object_type, o.graph_origin='module3',
-                            o.updated_at=datetime()
-                        MERGE (e)-[r:OBJECT_MAPPING {id:$id}]->(o)
-                        SET r.status=$status, r.reviewer=$reviewer, r.review_reason=$reason,
-                            r.reviewed_at=$reviewed_at, r.graph_origin='module3', r.updated_at=datetime()
-                        """,
-                        entity_id=entity_id,
-                        object_id=object_id,
-                        object_name=mapping["objectName"],
-                        object_type=mapping["objectType"],
-                        id=mapping["id"],
-                        status=status,
-                        reviewer=reviewer,
-                        reason=mapping["reason"],
-                        reviewed_at=mapping["reviewedAt"],
-                    ).consume()
-            finally:
-                driver.close()
-        except Exception:
-            pass
-    return mapping
-
-
 def _record_snapshot(snapshot_id: str, details: dict) -> dict:
     snapshots = _governance_items(SNAPSHOTS_PATH)
     record = {
@@ -397,8 +432,6 @@ def graph_quality_report() -> dict:
         entity_type = str(row.get("type") or "OTHER").upper()
         entity_type_counts[entity_type] = entity_type_counts.get(entity_type, 0) + 1
     resolutions = list_entity_resolutions()
-    mappings = list_object_mappings()
-    accepted_mappings = sum(item.get("status") == "Accepted" for item in mappings)
     return {
         "profileId": profile["id"],
         "entities": len(entity_rows),
@@ -406,8 +439,6 @@ def graph_quality_report() -> dict:
         "entityTypeCounts": entity_type_counts,
         "unknownEntityTypes": sorted(entity_type for entity_type in entity_type_counts if entity_type not in valid_entity_types),
         "resolvedEntities": sum(item.get("status") == "Accepted" for item in resolutions),
-        "objectMappings": len(mappings),
-        "acceptedObjectMappings": accepted_mappings,
         "snapshots": len(list_graph_snapshots()),
         "generatedAt": _now_iso(),
     }
@@ -649,6 +680,7 @@ def sync_from_euos(data: dict) -> dict:
             if snapshot_id:
                 snapshot_ids.add(str(snapshot_id))
 
+    evidence_snapshots: list[tuple[str, dict]] = []
     evidence_count = 0
     for snapshot_id in sorted(snapshot_ids):
         evidence_snapshot = _euos_get(
@@ -673,10 +705,25 @@ def sync_from_euos(data: dict) -> dict:
             evidence_snapshot["evidenceCount"] = len(units)
             evidence_snapshot["isTruncated"] = False
         evidence_count += len(evidence_snapshot.get("evidenceUnits") or [])
+        evidence_snapshots.append((snapshot_id, evidence_snapshot))
+
+    # Do not remove a usable local run until every required EUOS request completed.
+    neo4j_cleanup = _purge_module3_neo4j()
+    if neo4j_cleanup["status"] == "error":
+        raise ValueError(f"无法清理旧 Module 3 Neo4j 图谱：{neo4j_cleanup['reason']}")
+    cleanup = _reset_module3_run()
+    for snapshot_id, evidence_snapshot in evidence_snapshots:
         target = EVIDENCE_DIR / f"euos-{_safe_slug(snapshot_id)}.json"
         target.write_text(json.dumps(evidence_snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
-
     wiki_count = _write_euos_wiki_snapshot(snapshot, project_id, wiki_space_id)
+    source = {
+        "projectId": project_id,
+        "wikiSpaceId": wiki_space_id,
+        "wikiVersion": wiki_version,
+        "eventId": snapshot.get("eventId"),
+        "syncedAt": _now_iso(),
+    }
+    _write_json(ACTIVE_EUOS_SOURCE_PATH, source)
     return {
         "ok": True,
         "projectId": project_id,
@@ -686,15 +733,31 @@ def sync_from_euos(data: dict) -> dict:
         "wikiPages": wiki_count,
         "evidenceSnapshots": len(snapshot_ids),
         "evidenceUnits": evidence_count,
+        "source": source,
+        "cleanup": cleanup,
+        "neo4jCleanup": neo4j_cleanup,
     }
 
 
 def prepare_module3_input() -> dict:
     _ensure_module3_dirs()
+    if not ACTIVE_EUOS_SOURCE_PATH.exists():
+        raise ValueError("请先从 EUOS 拉取本次要索引的数据")
+    source = _read_json(ACTIVE_EUOS_SOURCE_PATH, {})
+    if not isinstance(source, dict):
+        raise ValueError("当前 EUOS 来源记录无效，请重新拉取数据")
     snapshots, evidence_units = _load_evidence_units()
-    pages = [_load_wiki_page(path) for path in sorted(WIKI_DIR.iterdir()) if path.suffix.lower() in {".json", ".md"}]
+    pages = [
+        page
+        for path in sorted(WIKI_DIR.iterdir())
+        if path.suffix.lower() in {".json", ".md"}
+        for page in [_load_wiki_page(path)]
+        if page.get("projectId") == source.get("projectId")
+        and page.get("wikiSpaceId") == source.get("wikiSpaceId")
+        and str(page.get("sourceSnapshot", {}).get("wikiVersion")) == str(source.get("wikiVersion"))
+    ]
     if not pages:
-        raise ValueError("请先导入模块2 WikiPage JSON/Markdown")
+        raise ValueError("未找到与当前 EUOS 来源匹配的 Wiki 页面，请重新拉取数据")
     by_id = {unit.get("evidenceId"): unit for unit in evidence_units}
     for old in GRAPH_INPUT_DIR.glob("*.md"):
         old.unlink()
@@ -738,6 +801,8 @@ def prepare_module3_input() -> dict:
         })
     manifest = {
         "contractVersion": "module3-poc-1.0",
+        "inputSource": "EUOS",
+        "source": source,
         "input": {"evidenceSnapshots": [item.get("evidenceSnapshotId") for item in snapshots], "wikiPages": entries},
         "counts": {"evidenceSnapshots": len(snapshots), "evidenceUnits": len(evidence_units), "wikiPages": len(pages)},
         "graphInputDir": str(GRAPH_INPUT_DIR),
@@ -1706,12 +1771,20 @@ def request_graph_build(data: dict) -> dict:
 def module3_status() -> dict:
     _ensure_module3_dirs()
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8")) if MANIFEST_PATH.exists() else None
+    source = _read_json(ACTIVE_EUOS_SOURCE_PATH, None)
+    snapshots, evidence_units = _load_evidence_units()
     return {
         "evidenceFiles": sorted(path.name for path in EVIDENCE_DIR.glob("*.json")),
         "wikiFiles": sorted(path.name for path in WIKI_DIR.iterdir() if path.suffix.lower() in {".json", ".md"}),
         "prepared": bool(manifest),
         "manifest": manifest,
         "graphInputFiles": sorted(path.name for path in GRAPH_INPUT_DIR.glob("*.md")),
+        "activeSource": source,
+        "counts": {
+            "wikiPages": len([path for path in WIKI_DIR.iterdir() if path.suffix.lower() in {".json", ".md"}]),
+            "evidenceSnapshots": len(snapshots),
+            "evidenceUnits": len(evidence_units),
+        },
     }
 
 
@@ -1791,12 +1864,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v1/graph/entity-resolutions":
             self._send(200, json.dumps({"ok": True, "items": list_entity_resolutions()}, ensure_ascii=False), "application/json")
             return
-        if path == "/api/v1/graph/object-provider":
-            self._send(200, json.dumps({"ok": True, "items": list_object_catalog()}, ensure_ascii=False), "application/json")
-            return
-        if path == "/api/v1/graph/object-mappings":
-            self._send(200, json.dumps({"ok": True, "items": list_object_mappings()}, ensure_ascii=False), "application/json")
-            return
         if path == "/api/v1/graph/snapshots":
             self._send(200, json.dumps({"ok": True, "items": list_graph_snapshots()}, ensure_ascii=False), "application/json")
             return
@@ -1822,57 +1889,6 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
             data = json.loads(self.rfile.read(length) or "{}")
-            if path == "/api/upload":
-                name = Path(str(data.get("name", ""))).name
-                encoded = str(data.get("content", ""))
-                allowed = {".txt", ".md", ".csv", ".json", ".jsonl"}
-                if not name or Path(name).suffix.lower() not in allowed:
-                    raise ValueError("仅支持 .txt、.md、.csv、.json、.jsonl 文件")
-                if not encoded:
-                    raise ValueError("文件内容为空")
-                payload = base64.b64decode(encoded, validate=True)
-                input_dir = ROOT / "input"
-                input_dir.mkdir(exist_ok=True)
-                source = Path(name)
-                saved_name = source.name
-                (input_dir / saved_name).write_bytes(payload)
-                self._send(200, json.dumps({"ok": True, "name": saved_name, "size": len(payload)}, ensure_ascii=False), "application/json")
-                return
-            if path == "/api/module3/upload":
-                kind = str(data.get("kind", "")).lower()
-                name = Path(str(data.get("name", ""))).name
-                encoded = str(data.get("content", ""))
-                allowed = {"evidence": {".json"}, "wiki": {".json", ".md"}}
-                if kind not in allowed or Path(name).suffix.lower() not in allowed[kind]:
-                    raise ValueError("模块1只支持 EvidenceSnapshot JSON；模块2支持 WikiPage JSON 或 Markdown")
-                if not encoded:
-                    raise ValueError("文件内容为空")
-                payload = base64.b64decode(encoded, validate=True)
-                _ensure_module3_dirs()
-                target_dir = EVIDENCE_DIR if kind == "evidence" else WIKI_DIR
-                (target_dir / name).write_bytes(payload)
-                self._send(200, json.dumps({"ok": True, "kind": kind, "name": name, "size": len(payload)}, ensure_ascii=False), "application/json")
-                return
-            if path == "/api/module3/load_examples":
-                _ensure_module3_dirs()
-                contract_roots = [
-                    Path(r"D:\euos-service-py"),
-                    Path(r"D:\ecos-service-py"),
-                    Path(r"D:\esos-service-py"),
-                ]
-                contract_root = next((path for path in contract_roots if path.exists()), None)
-                if contract_root is None:
-                    raise ValueError("找不到 euos-service-py / ecos-service-py 的契约样例目录")
-                evidence_example = contract_root / "contracts" / "examples" / "evidence" / "perkins-maintenance-snapshot.json"
-                wiki_example = contract_root / "contracts" / "examples" / "wiki" / "procedure-page.json"
-                if not evidence_example.exists() or not wiki_example.exists():
-                    raise ValueError(f"契约样例不完整：{contract_root}")
-                shutil.copy2(evidence_example, TEST_CASES_ROOT / "module1" / "evidence-snapshot.json")
-                shutil.copy2(wiki_example, TEST_CASES_ROOT / "module2" / "wiki-page.json")
-                shutil.copy2(evidence_example, EVIDENCE_DIR / "module1-evidence-snapshot.json")
-                shutil.copy2(wiki_example, WIKI_DIR / "module2-wiki-page.json")
-                self._send(200, json.dumps({"ok": True, "message": "已加载模块1/模块2真实契约样例"}, ensure_ascii=False), "application/json")
-                return
             if path == "/api/module3/prepare":
                 manifest = prepare_module3_input()
                 self._send(200, json.dumps({"ok": True, "manifest": manifest}, ensure_ascii=False), "application/json")
@@ -1888,10 +1904,6 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/v1/graph/entity-resolutions":
                 resolution = save_entity_resolution(data)
                 self._send(200, json.dumps({"ok": True, "item": resolution}, ensure_ascii=False), "application/json")
-                return
-            if path == "/api/v1/graph/object-mappings":
-                mapping = save_object_mapping(data)
-                self._send(200, json.dumps({"ok": True, "item": mapping}, ensure_ascii=False), "application/json")
                 return
             if path == "/api/v1/graph-builds":
                 build = request_graph_build(data)
@@ -1942,11 +1954,28 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(response, ensure_ascii=False), "application/json")
                 return
             elif path == "/api/index":
-                has_existing_index = (ROOT / "output" / "documents.parquet").exists()
-                index_command = "update" if has_existing_index else "index"
-                code, output = run_cli([index_command, "--root", str(ROOT), "--verbose"], timeout=7200)
-                output = _compact_index_output(output)
-                output = ("索引模式：" + ("增量更新（只处理新增或变化的文档）" if has_existing_index else "首次全量索引") + "\n" + output)
+                if not ACTIVE_EUOS_SOURCE_PATH.exists():
+                    raise ValueError("请先从 EUOS 拉取本次数据，再运行全量索引")
+                if not MANIFEST_PATH.exists():
+                    raise ValueError("请先准备本次 EUOS 输入，再运行全量索引")
+                available_commit = _available_commit_bytes()
+                if available_commit is not None and available_commit < 1_500 * 1024 * 1024:
+                    available_mb = round(available_commit / 1024 / 1024)
+                    message = (
+                        "索引未启动：系统可提交内存仅剩 "
+                        f"{available_mb} MB，GraphRAG 启动至少需要约 1.5 GB。"
+                        "请关闭或释放占用内存较高的应用后重试。"
+                    )
+                    self._send(
+                        200,
+                        json.dumps({"ok": False, "code": None, "output": message}, ensure_ascii=False),
+                        "application/json",
+                    )
+                    return
+                code, output = run_cli(["index", "--root", ".", "--verbose"], timeout=7200)
+                _write_index_log(output)
+                output = _compact_index_output(output, succeeded=code == 0)
+                output = "索引模式：本次全量索引（仅当前 EUOS 快照）\n" + output
                 neo4j_result = None
                 if code == 0:
                     try:

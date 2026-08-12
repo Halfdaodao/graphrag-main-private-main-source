@@ -33,7 +33,7 @@
   panel.id = "governancePanel";
   panel.innerHTML = `
     <div class="governed-row">
-      <div><h2>图谱治理与本地 Mock</h2><div class="hint">正式接入上游前，用本地 Profile、实体消歧和业务对象验证模块 3 契约。</div></div>
+      <div><h2>图谱治理</h2><div class="hint">对 EUOS 同步并抽取出的实体进行类型约束、消歧审核和质量核查。</div></div>
       <div class="actions"><button id="refreshGovernance" class="secondary">刷新治理数据</button><button id="runGraphBuild">构建治理快照</button></div>
     </div>
     <div class="governance-grid">
@@ -55,43 +55,29 @@
         <div id="resolutionList" class="governance-list"></div>
       </div>
       <div class="governance-box">
-        <h3>Object Provider / 业务对象映射</h3>
-        <label for="mappingEntity">知识实体</label><select id="mappingEntity"></select>
-        <label for="mappingObject">业务对象</label><select id="mappingObject"></select>
-        <label for="mappingReviewer">审核人</label><input id="mappingReviewer" value="local-reviewer">
-        <div class="governance-actions"><button id="saveMapping">保存映射候选</button><button id="acceptMapping" class="secondary">接受映射</button></div>
-        <div id="mappingList" class="governance-list"></div>
-      </div>
-      <div class="governance-box">
         <h3>快照与质量报告</h3>
         <div id="snapshotList" class="governance-list"></div>
         <div id="qualityReport" class="governance-report" style="margin-top:8px">尚未读取报告。</div>
       </div>
     </div>`;
-  const content = document.querySelector(".content");
-  if (content) content.insertBefore(panel, content.firstElementChild);
+  const content = document.querySelector("#governanceModalContent");
+  if (content) content.appendChild(panel);
 
   const $ = (id) => document.getElementById(id);
   const entityOptions = (entities) => entities.map((item) =>
     `<option value="${esc(item.id)}">${esc(item.canonical_name || item.title)} · ${esc(item.type || "")}</option>`).join("");
 
   async function refresh() {
-    const [profiles, entities, objects, resolutions, mappings, snapshots, quality] = await Promise.all([
+    const [profiles, entities, resolutions, snapshots, quality] = await Promise.all([
       request("/api/v1/graph-profiles"), request("/api/v1/graph/entities"),
-      request("/api/v1/graph/object-provider"), request("/api/v1/graph/entity-resolutions"),
-      request("/api/v1/graph/object-mappings"), request("/api/v1/graph/snapshots"),
+      request("/api/v1/graph/entity-resolutions"), request("/api/v1/graph/snapshots"),
       request("/api/v1/graph/quality-report"),
     ]);
     $("profileList").innerHTML = profiles.items.map((p) =>
       `<div class="governance-item"><strong>${esc(p.name)} ${p.active ? "（启用）" : ""}</strong>${esc(p.id)} · v${esc(p.version)}<br>实体 ${p.entityTypes.length} 类，关系 ${p.relationTypes.length} 类</div>`).join("") || "暂无 Profile";
     $("resolutionEntity").innerHTML = entityOptions(entities.items);
-    $("mappingEntity").innerHTML = entityOptions(entities.items);
-    $("mappingObject").innerHTML = objects.items.map((o) =>
-      `<option value="${esc(o.id)}">${esc(o.name)} · ${esc(o.type)}</option>`).join("");
     $("resolutionList").innerHTML = resolutions.items.map((r) =>
       `<div class="governance-item"><strong>${esc(r.canonicalName)}</strong>${esc(r.entityId)} · 别名：${esc((r.aliases || []).join("、"))}<br>${esc(r.status)} · ${esc(r.reviewer)}</div>`).join("") || "暂无消歧记录";
-    $("mappingList").innerHTML = mappings.items.map((m) =>
-      `<div class="governance-item"><strong>${esc(m.objectName)}</strong>${esc(m.entityId)} → ${esc(m.objectId)}<br>${esc(m.status)} · ${esc(m.reviewer)}</div>`).join("") || "暂无对象映射";
     $("snapshotList").innerHTML = snapshots.items.slice(0, 8).map((s) =>
       `<div class="governance-item"><strong>${esc(s.id)}</strong>${esc(s.status)} · ${esc(s.createdAt)}<br>候选实体 ${esc(s.entityCandidates)}，候选关系 ${esc(s.relationshipCandidates)}</div>`).join("") || "暂无治理快照";
     $("qualityReport").textContent = JSON.stringify(quality.report, null, 2);
@@ -122,19 +108,12 @@
       await refresh();
     } catch (error) { $("output").textContent = `保存消歧失败：${error}`; }
   };
-  async function saveMapping(status) {
-    try {
-      await post("/api/v1/graph/object-mappings", {
-        entityId: $("mappingEntity").value, objectId: $("mappingObject").value,
-        reviewer: $("mappingReviewer").value.trim(), status,
-      });
-      $("output").textContent = status === "Accepted" ? "业务对象映射已接受。" : "业务对象映射候选已保存。";
-      await refresh();
-    } catch (error) { $("output").textContent = `保存对象映射失败：${error}`; }
-  }
-  $("saveMapping").onclick = () => saveMapping("Candidate");
-  $("acceptMapping").onclick = () => saveMapping("Accepted");
   $("refreshGovernance").onclick = () => refresh().catch((error) => { $("output").textContent = `刷新治理数据失败：${error}`; });
+  $("openGovernance").onclick = () => {
+    $("governanceModal").showModal();
+    refresh().catch((error) => { $("output").textContent = `刷新治理数据失败：${error}`; });
+  };
+  $("closeGovernance").onclick = () => $("governanceModal").close();
   $("runGraphBuild").onclick = async () => {
     const button = $("runGraphBuild"); button.disabled = true; $("output").textContent = "正在构建治理快照…";
     try {

@@ -30,9 +30,11 @@ from .extract_covariates import (
 from .extract_graph import (
     run_workflow as run_extract_graph,
 )
-from .extract_graph_nlp import (
-    run_workflow as run_extract_graph_nlp,
-)
+async def run_extract_graph_nlp(*args, **kwargs):
+    """Load spaCy/torch only when the optional NLP indexing method is selected."""
+    from .extract_graph_nlp import run_workflow
+
+    return await run_workflow(*args, **kwargs)
 from .finalize_graph import (
     run_workflow as run_finalize_graph,
 )

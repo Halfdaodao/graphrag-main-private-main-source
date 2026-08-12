@@ -67,7 +67,7 @@ site/
 docsite/
 .yarn/
 .pnp*
-
+models/*
 # PyCharm
 .idea/
 

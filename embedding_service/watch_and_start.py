@@ -15,7 +15,7 @@ env = os.environ.copy()
 env["EMBEDDING_MODEL"] = str(weight.parent)
 env["HF_HOME"] = str(root / "models" / "huggingface")
 subprocess.run(
-    [str(root / ".venv" / "Scripts" / "python.exe"), "-m", "uvicorn", "server:app", "--app-dir", str(Path(__file__).parent), "--host", "127.0.0.1", "--port", "8001"],
+    [str(root / ".venv" / "Scripts" / "python.exe"), "-m", "uvicorn", "server:app", "--app-dir", str(Path(__file__).parent), "--host", "127.0.0.1", "--port", "8009"],
     cwd=Path(__file__).parent,
     env=env,
     check=False,
