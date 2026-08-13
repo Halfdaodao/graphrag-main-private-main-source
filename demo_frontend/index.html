@@ -64,12 +64,36 @@ function renderEvidence(evidence){
   const target=$('evidenceChain');
   if(!target)return;
   if(!evidence){target.innerHTML='<span class="hint">本次查询没有可展示的结构化证据。</span>';return}
-  const entities=evidence.entities||[],paths=evidence.paths||[],sources=evidence.sources||[];
-  if(!entities.length&&!paths.length&&!sources.length){target.innerHTML=`<span class="hint">${evidence.error?'读取证据链失败：'+esc(evidence.error):'当前没有找到可关联的结构化证据。'}</span>`;return}
+  const entities=evidence.entities||[],paths=evidence.paths||[],answerSources=evidence.answerSources||[],graphSources=evidence.graphSources||[];
+  if(!entities.length&&!paths.length&&!answerSources.length&&!graphSources.length){target.innerHTML=`<span class="hint">${evidence.error?'读取证据链失败：'+esc(evidence.error):'当前没有找到可关联的结构化证据。'}</span>`;return}
   const entityHtml=entities.length?entities.map(x=>`<span class="artifact">${esc(x.title)}${x.type?' · '+esc(x.type):''}</span>`).join(' '):'<span class="hint">回答中未匹配到实体。</span>';
-  const pathHtml=paths.length?paths.map(x=>`<div class="evidence-item"><strong>${esc(x.source)} → ${esc(x.target)}</strong><div class="evidence-meta">Wiki：${esc(x.wiki_title||x.wiki_page_id||'未命名页面')} · 权重：${esc(x.weight??'未提供')}</div>${x.description?`<div class="evidence-text">${esc(x.description)}</div>`:''}</div>`).join(''):'<span class="hint">没有匹配到实体之间的图谱关系。</span>';
-  const sourceHtml=sources.length?sources.map(x=>`<div class="evidence-item"><strong>${esc(x.document_title||'未命名原始文档')}</strong><div class="evidence-meta">Wiki：${esc(x.wiki_title||x.wiki_page_id||'未命名页面')} · Evidence：${esc(x.evidence_id||'未提供')}${x.heading?' · 章节：'+esc(x.heading):''}${x.page_numbers?.length?' · 页码：'+esc(x.page_numbers.join(', ')):''}</div>${x.text?`<div class="evidence-text">${esc(x.text)}</div>`:''}</div>`).join(''):'<span class="hint">没有找到可回溯的原始文档片段。</span>';
-  target.innerHTML=`<div class="evidence-group"><h3>命中实体</h3><div>${entityHtml}</div></div><div class="evidence-group"><h3>Neo4j 图谱关系</h3>${pathHtml}</div><div class="evidence-group"><h3>原始文档来源</h3>${sourceHtml}</div>`;
+  const pathHtml=paths.length?paths.map(x=>{
+    const details=[`Wiki：${esc(x.wiki_title||x.wiki_page_id||'未命名页面')}`];
+    if(x.status)details.push(`状态：${esc(x.status)}`);
+    if(x.weight!==undefined&&x.weight!==null&&x.weight!=='')details.push(`抽取权重：${esc(x.weight)}`);
+    return `<div class="evidence-item"><strong>${esc(x.source)} → ${esc(x.target)}</strong><div class="evidence-meta">${details.join(' · ')}</div>${x.description?`<div class="evidence-text">${esc(x.description)}</div>`:''}</div>`;
+  }).join(''):'<span class="hint">没有匹配到实体之间的图谱关系。</span>';
+  const answerSourceHtml=answerSources.length?answerSources.map(x=>{
+    const reports=(x.report_ids||[]).join(', ');
+    const sources=(x.source_ids||[]).join(', ');
+    const refs=[];
+    if(sources)refs.push(`Source：${esc(sources)}`);
+    if(reports)refs.push(`Report：${esc(reports)}`);
+    if(x.citations?.length)refs.push(`匹配：${esc(x.citations.map(c=>`${c.report_id}=${c.match_type}`).join(', '))}`);
+    refs.push(`Wiki：${esc(x.wiki_title||x.wiki_page_id||'未命名页面')}`);
+    refs.push(`Evidence：${esc(x.evidence_id||'未提供')}`);
+    if(x.heading)refs.push(`章节：${esc(x.heading)}`);
+    if(x.page_numbers?.length)refs.push(`页码：${esc(x.page_numbers.join(', '))}`);
+    return `<div class="evidence-item"><strong>${esc(x.document_title||'未命名原始文档')}</strong><div class="evidence-meta">${refs.join(' · ')}</div>${x.text?`<div class="evidence-text">${esc(x.text)}</div>`:''}</div>`;
+  }).join(''):'<span class="hint">回答没有可回溯的 Sources/Reports 原文引用。</span>';
+  const graphSourceHtml=graphSources.length?graphSources.map(x=>{
+    const supported=x.supported_relations||[];
+    const coverage=supported.length
+      ? `<div class="evidence-meta">支撑关系：${esc(x.supported_relation_count||supported.length)} 条</div><div class="evidence-text">${supported.map(r=>`${esc(r.source)} → ${esc(r.target)}`).join('；')}</div>`
+      : '';
+    return `<div class="evidence-item"><strong>${esc(x.document_title||'未命名原始文档')}</strong><div class="evidence-meta">Wiki：${esc(x.wiki_title||x.wiki_page_id||'未命名页面')} · Evidence：${esc(x.evidence_id||'未提供')}${x.heading?' · 章节：'+esc(x.heading):''}${x.page_numbers?.length?' · 页码：'+esc(x.page_numbers.join(', ')):''}</div>${coverage}${x.text?`<div class="evidence-text">${esc(x.text)}</div>`:''}</div>`;
+  }).join(''):'<span class="hint">没有找到支撑图谱关系的原始文档片段。</span>';
+  target.innerHTML=`<div class="evidence-group"><h3>命中实体</h3><div>${entityHtml}</div></div><div class="evidence-group"><h3>Neo4j 图谱关系</h3>${pathHtml}</div><div class="evidence-group"><h3>回答引用依据</h3>${answerSourceHtml}</div><div class="evidence-group"><h3>图谱关系依据</h3>${graphSourceHtml}</div>`;
 }
 function renderTable(target,rows,columns){if(!rows||!rows.length){$(target).innerHTML='<div class="hint" style="padding:12px">暂无数据。</div>';return}let head=columns.map(c=>`<th>${esc(c)}</th>`).join('');let body=rows.map(row=>`<tr>${columns.map(c=>`<td>${esc(typeof row[c]==='object'?JSON.stringify(row[c]):row[c])}</td>`).join('')}</tr>`).join('');$(target).innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`}
 async function refreshStatus(){try{const d=await fetch('/api/module3/status').then(r=>r.json());const indexFiles=await fetch('/api/status').then(r=>r.json());const source=d.activeSource;const sourceText=source?`本次来源：${esc(source.projectId)} / ${esc(source.wikiSpaceId)} / v${esc(source.wikiVersion)}<br>`:'本次来源：尚未同步<br>';const counts=d.counts||{};$('inputs').innerHTML=`${sourceText}EUOS Evidence 快照：${counts.evidenceSnapshots??d.evidenceFiles.length} 个<br>EUOS Wiki 页面：${counts.wikiPages??d.wikiFiles.length} 个<br>Evidence：${counts.evidenceUnits??'0'} 条<br>GraphRAG 输入：${d.graphInputFiles.length} 份${d.prepared?' · 已准备':' · 尚未准备'}`;$('artifacts').innerHTML=indexFiles.files.map(x=>`<span class="artifact">${esc(x)}</span>`).join(' ')||'<span class="hint">尚无本次索引产物。</span>';if(indexFiles.indexed)await loadResults()}catch(e){$('output').textContent='无法连接本地服务：'+e}}
@@ -138,7 +162,7 @@ $('method').onchange=()=>{$('methodHint').textContent=methodLabels[$('method').v
 $('methodHint').textContent=methodLabels[$('method').value][1];
 const hopsLabel=document.createElement('label');
 hopsLabel.htmlFor='maxHops';
-hopsLabel.textContent='最大跳数';
+hopsLabel.textContent='路径上限';
 const hopsSelect=document.createElement('select');
 hopsSelect.id='maxHops';hopsSelect.className='scope-select';
 hopsSelect.innerHTML='<option value="1">1 跳</option><option value="2">2 跳</option><option value="3" selected>3 跳</option><option value="4">4 跳</option><option value="5">5 跳</option><option value="6">6 跳</option>';
@@ -230,8 +254,24 @@ $('ask').onclick=async()=>{
   try{
     const r=await fetch('/api/hybrid-query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,method:$('method').value,scope:$('graphScope').value,maxHops:Number($('maxHops').value)})});
     const d=await r.json();$('answer').textContent=d.answer||d.error||'没有返回结果';
-    $('output').textContent=`执行完成\n检索方式：${methodLabels[$('method').value][0]}\n图谱范围：${d.scope==='published'?'只看正式':'包含待审核'}\n最大跳数：${d.max_hops??$('maxHops').value}\nGraphRAG：${d.ok?'已返回答案':'执行失败'}\nNeo4j 多跳路径：${d.paths?.length||0} 条\nEvidence 引文：${d.evidence?.length||0} 条`;
-    renderEvidence({entities:[],paths:(d.paths||[]).flatMap(p=>(p.relationships||[]).map((r,i)=>({source:p.nodes?.[i]?.title,target:p.nodes?.[i+1]?.title,description:r.description,weight:r.status}))),sources:d.evidence||[]});
+    const actualDepths=(d.paths||[]).map(p=>(p.relationships||[]).length);
+    const maxDepth=actualDepths.length?Math.max(...actualDepths):0;
+    const supportedRelations=(d.evidence||[]).reduce((sum,x)=>sum+(x.supported_relation_count||0),0);
+    const citation=d.citation_coverage||{};
+    const scopeNotice=d.scope==='published'?'\n注意：当前正式范围仅约束 Neo4j 图谱路径；GraphRAG 回答仍基于当前索引。':'';
+    $('output').textContent=`执行完成\n检索方式：${methodLabels[$('method').value][0]}\n图谱范围：${d.scope==='published'?'只看正式':'包含待审核'}\n路径上限：${d.max_hops??$('maxHops').value} 跳\n实际命中深度：${maxDepth||'无'}${maxDepth?' 跳':''}\nGraphRAG：${d.ok?'已完成检索':'执行失败'}\n回答引用：${citation.source_ids?.length||0} 个 Source，${citation.report_ids?.length||0} 个 Report，已回溯 ${citation.resolved_source_ids?.length||0} 个 Source / ${citation.resolved_report_ids?.length||0} 个 Report\n最终采用：${d.answer_evidence?.length||0} 条当前 EUOS Evidence，经校验后整理回答\nNeo4j 多跳路径：${d.paths?.length||0} 条\n图谱原文：${d.evidence?.length||0} 条唯一 Evidence${supportedRelations?`（覆盖 ${supportedRelations} 条关系）`:''}${scopeNotice}`;
+    const relationMap=new Map();
+    (d.paths||[]).forEach(p=>(p.relationships||[]).forEach((r,i)=>{
+      const source=p.nodes?.[i]?.title||'',target=p.nodes?.[i+1]?.title||'';
+      const key=r.candidate_id||`${source}|${target}|${r.description||''}`;
+      if(!relationMap.has(key))relationMap.set(key,{source,target,description:r.description,status:r.status,weight:r.weight,wiki_title:r.wiki_title,wiki_page_id:r.wiki_page_id});
+    }));
+    const evidenceMap=new Map();
+    (d.evidence||[]).forEach(x=>{
+      const key=x.evidence_id||`${x.document_version_id||''}|${x.heading||''}|${x.text||''}`;
+      if(!evidenceMap.has(key))evidenceMap.set(key,x);
+    });
+    renderEvidence({entities:d.entities||[],paths:[...relationMap.values()],answerSources:d.answer_evidence||[],graphSources:[...evidenceMap.values()]});
   }catch(e){$('answer').textContent='查询失败：'+e;$('output').textContent='执行失败：'+String(e);renderEvidence()}finally{clearInterval(progress);button.disabled=false}
 };
 setTimeout(()=>$('refreshCandidates').click(),1200);

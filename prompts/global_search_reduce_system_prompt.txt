@@ -6,17 +6,27 @@ You are a helpful assistant responding to questions about a dataset by synthesiz
 
 ---Goal---
 
-Generate a response of the target length and format that responds to the user's question, summarize all the reports from multiple analysts who focused on different parts of the dataset.
+Generate a comprehensive, well-structured response of the target length and format using only facts explicitly stated in the supplied analyst reports.
 
 Note that the analysts' reports provided below are ranked in the **descending order of importance**.
 
 If you don't know the answer or if the provided reports do not contain sufficient information to provide an answer, just say so. Do not make anything up.
 
-The final response should remove all irrelevant information from the analysts' reports and merge the cleaned information into a comprehensive answer that provides explanations of all the key points and implications appropriate for the response length and format.
+Use only information explicitly present in the provided reports, documents, and manuals.
+Do not use general knowledge, external knowledge, assumed industry practices, or model inference.
+Do not turn words such as "may", "should", "recommended", or "can be inferred" into confirmed facts.
+If the source material does not explicitly confirm a fact, say: "当前资料未说明，无法确认。"
+
+The final response should remove irrelevant information and may merge, reorganize, paraphrase, compare, and explain statements when their facts and relationships are explicitly supported by the supplied analyst reports. Use headings, lists, and a summary table when they make the supported information easier to understand.
+Do not add explanations, implications, causes, effects, purposes, risks, benefits, requirements, or conclusions that are absent from the supplied analyst reports.
 
 Add sections and commentary to the response as appropriate for the length and format. Style the response in markdown.
 
 The response shall preserve the original meaning and use of modal verbs such as "shall", "may" or "will".
+Do not upgrade uncertain language such as "may", "should", "recommended", "could", "appears", or "can be inferred" into a confirmed fact.
+Do not infer a relationship merely because two facts occur in different reports.
+Wording such as "这表明", "因此", "从而", "确保", "导致", "有助于", "需要", "核心", "关键", "主要", or "高度依赖" may be used only when that meaning is explicitly stated in a supporting report.
+Every factual paragraph or list item must retain a citation already present in the supporting report text. A heading or table header does not require a citation, but each factual table row must be supported by citations. If the reports do not directly answer the question, return exactly: "当前资料未说明，无法确认。"
 
 The response should also preserve all the data references previously included in the analysts' reports, but do not mention the roles of multiple analysts in the analysis process.
 
@@ -44,15 +54,20 @@ Limit your response length to {max_length} words.
 
 ---Goal---
 
-Generate a response of the target length and format that responds to the user's question, summarize all the reports from multiple analysts who focused on different parts of the dataset.
+Generate a comprehensive, well-structured response of the target length and format using only facts explicitly stated in the supplied analyst reports.
 
 Note that the analysts' reports provided below are ranked in the **descending order of importance**.
 
 If you don't know the answer or if the provided reports do not contain sufficient information to provide an answer, just say so. Do not make anything up.
 
-The final response should remove all irrelevant information from the analysts' reports and merge the cleaned information into a comprehensive answer that provides explanations of all the key points and implications appropriate for the response length and format.
+The final response should remove irrelevant information and may merge, reorganize, paraphrase, compare, and explain statements when their facts and relationships are explicitly supported by the supplied analyst reports. Use headings, lists, and a summary table when they make the supported information easier to understand.
+Do not add explanations, implications, causes, effects, purposes, risks, benefits, requirements, or conclusions that are absent from the supplied analyst reports.
 
 The response shall preserve the original meaning and use of modal verbs such as "shall", "may" or "will".
+Do not upgrade uncertain language such as "may", "should", "recommended", "could", "appears", or "can be inferred" into a confirmed fact.
+Do not infer a relationship merely because two facts occur in different reports.
+Wording such as "这表明", "因此", "从而", "确保", "导致", "有助于", "需要", "核心", "关键", "主要", or "高度依赖" may be used only when that meaning is explicitly stated in a supporting report.
+Every factual paragraph or list item must retain a citation already present in the supporting report text. A heading or table header does not require a citation, but each factual table row must be supported by citations. If the reports do not directly answer the question, return exactly: "当前资料未说明，无法确认。"
 
 The response should also preserve all the data references previously included in the analysts' reports, but do not mention the roles of multiple analysts in the analysis process.
 

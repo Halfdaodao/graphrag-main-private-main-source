@@ -120,16 +120,32 @@ def run_cli(args: list[str], timeout: int = 1800) -> tuple[int, str]:
     # child process in UTF-8 as well.
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
-    completed = subprocess.run(
-        command,
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-    )
+    # LiteLLM's remote price-map refresh is unrelated to inference. Use its
+    # bundled map to avoid a noisy timeout warning on restricted networks.
+    env["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    # httpx/OpenAI honors the Windows user proxy even when no proxy variables
+    # are visible in this process. Keep the local embedding endpoint direct.
+    proxy_bypass = {"127.0.0.1", "localhost", "::1"}
+    for key in ("NO_PROXY", "no_proxy"):
+        configured = {item.strip() for item in env.get(key, "").split(",") if item.strip()}
+        env[key] = ",".join(sorted(configured | proxy_bypass))
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        output = (stdout + "\n" + stderr).strip()
+        output = SECRET_PATTERN.sub("sk-***REDACTED***", output)
+        return 124, f"{output}\nGraphRAG 查询超时（{timeout} 秒）。".strip()
     output = (completed.stdout + "\n" + completed.stderr).strip()
     output = SECRET_PATTERN.sub("sk-***REDACTED***", output)
     return completed.returncode, output
@@ -163,6 +179,46 @@ def embedding_service_status() -> tuple[bool, str]:
     except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
         return False, f"无法连接本地嵌入服务 http://127.0.0.1:8001：{exc}"
     return True, "本地 BGE-M3 嵌入服务正常。"
+
+
+def _query_failure_message(output: str) -> str:
+    """Turn common CLI failures into a concise message suitable for the UI."""
+    lowered = output.lower()
+    if "error code: 502" in lowered or "badgatewayerror" in lowered:
+        return (
+            "局部嵌入请求失败：本机代理拦截了 BGE-M3 服务。"
+            "服务端已启用本机地址代理绕过，请重新执行查询。"
+        )
+    if "connection error" in lowered or "apiconnectionerror" in lowered:
+        return "无法连接模型服务，请检查本地 BGE-M3 服务和大模型接口。"
+    if "查询超时" in output:
+        return output.rsplit("\n", 1)[-1]
+    for line in reversed(output.splitlines()):
+        line = line.strip()
+        if line and ("error" in line.lower() or "exception" in line.lower()):
+            return line
+    return "GraphRAG 查询执行失败，请查看 logs/query.log。"
+
+
+def _clean_query_output(output: str) -> str:
+    """Keep the answer portion and remove CLI progress/log noise."""
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", str(output or ""))
+    kept: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            kept.append("")
+            continue
+        if re.match(r"^\d{1,3}%\|", stripped):
+            continue
+        if re.match(r"^[\s|]*\d{1,3}%\s*$", stripped):
+            continue
+        if stripped.startswith(("LiteLLM:", "HTTP Request:", "Retrying request")):
+            continue
+        kept.append(line.rstrip())
+    while kept and not kept[-1].strip():
+        kept.pop()
+    return "\n".join(kept).strip()
 
 
 def _index_failure_reason(output: str) -> str | None:
@@ -915,6 +971,798 @@ def _as_list(value: object) -> list[str]:
         except json.JSONDecodeError:
             pass
     return [text]
+
+
+def _extract_report_ids(answer: str) -> list[int]:
+    """Extract GraphRAG report citations while preserving answer order."""
+    report_ids: list[int] = []
+    seen: set[int] = set()
+    for match in re.finditer(r"\[Data:\s*Reports?\s*\(([^)]*)\)\]", answer, re.IGNORECASE):
+        for raw_id in re.findall(r"\d+", match.group(1)):
+            report_id = int(raw_id)
+            if report_id not in seen:
+                seen.add(report_id)
+                report_ids.append(report_id)
+    return report_ids
+
+
+def _extract_source_ids(answer: str) -> list[int | str]:
+    """Extract numeric Text Unit IDs or UUID Evidence source IDs."""
+    source_ids: list[int | str] = []
+    seen: set[int | str] = set()
+    for match in re.finditer(r"\[Data:\s*Sources?\s*\(([^)]*)\)\]", answer, re.IGNORECASE):
+        for raw_id in match.group(1).split(","):
+            raw_id = raw_id.strip()
+            if not raw_id or raw_id.casefold() == "+more":
+                continue
+            if re.fullmatch(r"\d+", raw_id):
+                source_id: int | str = int(raw_id)
+            elif re.fullmatch(
+                r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+                raw_id,
+            ):
+                source_id = raw_id.lower()
+            else:
+                continue
+            if source_id not in seen:
+                seen.add(source_id)
+                source_ids.append(source_id)
+    return source_ids
+
+
+def _report_id(value: object) -> int | None:
+    try:
+        return int(float(str(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _evidence_page_numbers(evidence: dict) -> list[str]:
+    return sorted({
+        str(fragment.get("pageNumber"))
+        for fragment in evidence.get("sourceFragments") or []
+        if fragment.get("pageNumber") is not None
+    }, key=lambda value: int(value) if value.isdigit() else value)
+
+
+def _answer_evidence_score(evidence: dict, query: str, report_title: str) -> int:
+    """Rank original Evidence against the question without trusting generated prose."""
+    evidence_text = " ".join([
+        " ".join(evidence.get("headingPath") or []),
+        str(evidence.get("text") or ""),
+    ]).casefold()
+    normalized_evidence = _normalize_query_text(evidence_text)
+    normalized_query = _normalize_query_text(query)
+    score = 0
+    for term in _query_terms(query):
+        normalized_term = _normalize_query_text(term)
+        if normalized_term and normalized_term in normalized_evidence:
+            score += max(8, len(normalized_term) * 2)
+    chinese_query = "".join(re.findall(r"[\u4e00-\u9fff]+", normalized_query))
+    score += sum(
+        1
+        for index in range(max(0, len(chinese_query) - 1))
+        if chinese_query[index:index + 2] in normalized_evidence
+    )
+    for token in re.findall(r"[a-z][a-z0-9_-]+", f"{query} {report_title}".casefold()):
+        if len(token) >= 3 and token in evidence_text:
+            score += 3
+    return score
+
+
+def _resolve_answer_evidence(answer: str, query: str, limit: int = 8) -> tuple[list[dict], dict]:
+    """Trace GraphRAG Report/Source citations back to EUOS Wiki and Evidence."""
+    report_ids = _extract_report_ids(answer)
+    source_ids = _extract_source_ids(answer)
+    coverage = {
+        "report_ids": report_ids,
+        "resolved_report_ids": [],
+        "unresolved_report_ids": list(report_ids),
+        "unique_evidence_count": 0,
+    }
+    if source_ids:
+        coverage.update({
+            "source_ids": source_ids,
+            "resolved_source_ids": [],
+            "unresolved_source_ids": list(source_ids),
+        })
+    if (not report_ids and not source_ids) or not MANIFEST_PATH.exists():
+        return [], coverage
+
+    report_rows = _read_parquet_rows("community_reports.parquet", limit=100000)
+    community_rows = _read_parquet_rows("communities.parquet", limit=100000)
+    text_unit_rows = _read_parquet_rows("text_units.parquet", limit=100000)
+    document_rows = _read_parquet_rows("documents.parquet", limit=100000)
+    if any(rows and rows[0].get("error") for rows in (
+        report_rows, community_rows, text_unit_rows, document_rows,
+    )):
+        return [], coverage
+
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    pages = manifest.get("input", {}).get("wikiPages") or []
+    page_by_graph_file = {
+        str(page.get("graphInputFile") or ""): page
+        for page in pages
+        if page.get("graphInputFile")
+    }
+    snapshots, evidence_units = _load_evidence_units()
+    evidence_by_id = {
+        str(evidence.get("evidenceId") or ""): evidence
+        for evidence in evidence_units
+        if evidence.get("evidenceId")
+    }
+    snapshot_by_id = {
+        str(snapshot.get("evidenceSnapshotId") or ""): snapshot
+        for snapshot in snapshots
+    }
+    for page in pages:
+        page["evidenceRefs"] = _page_evidence_refs(page, evidence_by_id)
+
+    pages_by_evidence: dict[str, list[dict]] = {}
+    for page in pages:
+        for ref in page.get("evidenceRefs") or []:
+            evidence_id = str(ref.get("evidenceId") or "")
+            if evidence_id:
+                pages_by_evidence.setdefault(evidence_id, []).append(page)
+
+    document_by_id = {
+        str(row.get("id") or ""): row
+        for row in document_rows
+        if row.get("id")
+    }
+    text_unit_by_id = {
+        str(row.get("id") or ""): row
+        for row in text_unit_rows
+        if row.get("id")
+    }
+    text_units_by_source_id = {
+        source_id: row
+        for row in text_unit_rows
+        if (source_id := _report_id(row.get("human_readable_id"))) is not None
+    }
+    page_by_text_unit: dict[str, dict] = {}
+    for text_unit_id, text_unit in text_unit_by_id.items():
+        document = document_by_id.get(str(text_unit.get("document_id") or ""), {})
+        page = page_by_graph_file.get(str(document.get("title") or ""))
+        if page:
+            page_by_text_unit[text_unit_id] = page
+
+    report_by_id = {
+        report_id: row
+        for row in report_rows
+        if (report_id := _report_id(row.get("human_readable_id"))) is not None
+    }
+    community_by_id = {
+        community_id: row
+        for row in community_rows
+        if (community_id := _report_id(row.get("community"))) is not None
+    }
+    evidence_id_pattern = re.compile(
+        r"(?:Evidence\s+ID:\s*|Evidence:\s*`)([0-9a-fA-F-]{32,})",
+        re.IGNORECASE,
+    )
+    selected_by_id: dict[str, dict] = {}
+    resolved_report_ids: list[int] = []
+    resolved_source_ids: list[int | str] = []
+
+    def add_selected_evidence(
+        evidence_id: str,
+        evidence: dict,
+        page: dict | None,
+        *,
+        report_id: int | None = None,
+        report_title: str = "",
+        source_id: int | str | None = None,
+        source_title: str = "",
+        match_type: str = "exact",
+    ) -> None:
+        if page is None:
+            matching_pages = pages_by_evidence.get(evidence_id) or []
+            page = matching_pages[0] if matching_pages else {}
+        snapshot = snapshot_by_id.get(str(evidence.get("evidenceSnapshotId") or ""), {})
+        document = snapshot.get("document") or {}
+        existing = selected_by_id.get(evidence_id)
+        if existing:
+            if report_id is not None and report_id not in existing["report_ids"]:
+                existing["report_ids"].append(report_id)
+                existing["report_titles"].append(report_title)
+                existing["citations"].append({
+                    "report_id": report_id,
+                    "report_title": report_title,
+                    "match_type": match_type,
+                })
+            if source_id is not None and source_id not in existing["source_ids"]:
+                existing["source_ids"].append(source_id)
+                existing["source_titles"].append(source_title)
+            return
+        selected_by_id[evidence_id] = {
+            "evidence_id": evidence_id,
+            "evidence_snapshot_id": str(evidence.get("evidenceSnapshotId") or ""),
+            "document_version_id": str(evidence.get("documentVersionId") or ""),
+            "document_title": str(document.get("title") or "未命名原始文档"),
+            "wiki_page_id": str(page.get("wikiPageId") or ""),
+            "wiki_title": str(page.get("title") or "未命名页面"),
+            "heading": " / ".join(evidence.get("headingPath") or []),
+            "text": str(evidence.get("text") or ""),
+            "page_numbers": _evidence_page_numbers(evidence),
+            "report_ids": [report_id] if report_id is not None else [],
+            "report_titles": [report_title] if report_id is not None else [],
+            "citations": [{
+                "report_id": report_id,
+                "report_title": report_title,
+                "match_type": match_type,
+            }] if report_id is not None else [],
+            "source_ids": [source_id] if source_id is not None else [],
+            "source_titles": [source_title] if source_id is not None else [],
+        }
+
+    for report_id in report_ids:
+        report = report_by_id.get(report_id)
+        if not report:
+            continue
+        community_id = _report_id(report.get("community"))
+        community = community_by_id.get(community_id)
+        if not community:
+            continue
+        report_title = str(report.get("title") or f"Report {report_id}")
+        candidates: dict[str, dict] = {}
+        report_pages: list[dict] = []
+        for text_unit_id in _as_list(community.get("text_unit_ids")):
+            text_unit = text_unit_by_id.get(text_unit_id, {})
+            page = page_by_text_unit.get(text_unit_id)
+            if page and page not in report_pages:
+                report_pages.append(page)
+            for evidence_id in evidence_id_pattern.findall(str(text_unit.get("text") or "")):
+                evidence = evidence_by_id.get(evidence_id)
+                if evidence:
+                    candidate = {"evidence": evidence, "page": page}
+                    existing = candidates.get(evidence_id)
+                    existing_refs = len((existing or {}).get("page", {}).get("evidenceRefs") or [])
+                    candidate_refs = len((page or {}).get("evidenceRefs") or [])
+                    if existing is None or (candidate_refs and candidate_refs < existing_refs):
+                        candidates[evidence_id] = candidate
+
+        match_type = "exact" if candidates else "unresolved"
+        # Some older GraphRAG chunks omit inline Evidence IDs. Only use a
+        # page-level fallback when the mapping is unambiguous.
+        if not candidates:
+            if len(report_pages) == 1 and len(report_pages[0].get("evidenceRefs") or []) == 1:
+                ref = report_pages[0]["evidenceRefs"][0]
+                evidence_id = str(ref.get("evidenceId") or "")
+                evidence = evidence_by_id.get(evidence_id)
+                if evidence:
+                    candidates[evidence_id] = {"evidence": evidence, "page": report_pages[0]}
+                    match_type = "unique_page"
+        if not candidates:
+            continue
+
+        ranked = sorted(candidates.items(), key=lambda item: (
+            -_answer_evidence_score(item[1]["evidence"], query, report_title),
+            item[0],
+        ))
+        # An exact citation with several equally relevant Evidence units is
+        # ambiguous. Do not invent a single source for the whole Report.
+        if len(ranked) > 1:
+            best_score = _answer_evidence_score(ranked[0][1]["evidence"], query, report_title)
+            second_score = _answer_evidence_score(ranked[1][1]["evidence"], query, report_title)
+            if best_score == second_score:
+                continue
+        resolved_report_ids.append(report_id)
+        for evidence_id, candidate in ranked[:1]:
+            add_selected_evidence(
+                evidence_id,
+                candidate["evidence"],
+                candidate.get("page"),
+                report_id=report_id,
+                report_title=report_title,
+                match_type=match_type,
+            )
+
+    # GraphRAG's Sources citations point to Text Units rather than community
+    # reports. Trace each cited Text Unit through its document/Wiki mapping and
+    # then use the embedded Evidence IDs as the most precise provenance.
+    for source_id in source_ids:
+        # Drift Search may emit the underlying Evidence UUID as a Source
+        # citation. Resolve it directly instead of treating UUID digits as an
+        # integer Text Unit ID.
+        if isinstance(source_id, str):
+            evidence = evidence_by_id.get(source_id)
+            if evidence:
+                resolved_source_ids.append(source_id)
+                add_selected_evidence(
+                    source_id,
+                    evidence,
+                    (pages_by_evidence.get(source_id) or [None])[0],
+                    source_id=source_id,
+                    source_title=f"Source {source_id}",
+                )
+            continue
+        text_unit = text_units_by_source_id.get(source_id)
+        if not text_unit:
+            continue
+        source_title = str(
+            text_unit.get("title")
+            or text_unit.get("document_id")
+            or f"Source {source_id}"
+        )
+        text_unit_id = str(text_unit.get("id") or "")
+        page = page_by_text_unit.get(text_unit_id)
+        candidates: dict[str, dict] = {}
+        for evidence_id in evidence_id_pattern.findall(str(text_unit.get("text") or "")):
+            evidence = evidence_by_id.get(evidence_id)
+            if evidence:
+                candidates[evidence_id] = {"evidence": evidence, "page": page}
+
+        source_match_type = "exact" if candidates else "unresolved"
+        # Keep compatibility with Text Units that do not include inline IDs,
+        # but only when the mapped Wiki page has one Evidence reference.
+        if not candidates and page and len(page.get("evidenceRefs") or []) == 1:
+            ref = page["evidenceRefs"][0]
+            evidence_id = str(ref.get("evidenceId") or "")
+            evidence = evidence_by_id.get(evidence_id)
+            if evidence:
+                candidates[evidence_id] = {"evidence": evidence, "page": page}
+                source_match_type = "unique_page"
+        if not candidates:
+            continue
+
+        ranked = sorted(
+            candidates.items(),
+            key=lambda item: (
+                -_answer_evidence_score(item[1]["evidence"], query, source_title),
+                item[0],
+            ),
+        )
+        resolved_source_ids.append(source_id)
+        # A cited Source may contain several Evidence units. Return the best
+        # matching one and let the Evidence ID deduplication merge overlaps.
+        evidence_id, candidate = ranked[0]
+        add_selected_evidence(
+            evidence_id,
+            candidate["evidence"],
+            candidate.get("page"),
+            source_id=source_id,
+            source_title=source_title,
+            match_type=source_match_type,
+        )
+
+    answer_evidence = list(selected_by_id.values())[:limit]
+    coverage["resolved_report_ids"] = resolved_report_ids
+    coverage["unresolved_report_ids"] = [
+        report_id for report_id in report_ids if report_id not in set(resolved_report_ids)
+    ]
+    if source_ids:
+        coverage["resolved_source_ids"] = resolved_source_ids
+        coverage["unresolved_source_ids"] = [
+            source_id for source_id in source_ids if source_id not in set(resolved_source_ids)
+        ]
+    coverage["unique_evidence_count"] = len(answer_evidence)
+    return answer_evidence, coverage
+
+
+_UNSUPPORTED_INFERENCE_TERMS = (
+    "这表明", "这说明", "因此", "从而", "暗示", "通常", "一般", "可能", "可以推断",
+    "推断", "确保", "导致", "有助于", "需要", "核心", "关键", "主要", "基础",
+    "高度依赖", "完整性", "一致性", "挑战", "风险", "优势", "作用", "位于",
+    "构成", "对应", "聚合", "集成", "存储", "负责", "提供", "直接", "明确",
+)
+
+
+def _answer_citation_evidence(
+    citations: list[tuple[str, int | str]],
+    answer_evidence: list[dict],
+) -> list[str]:
+    """Return raw Evidence text linked to the cited Report/Source ids."""
+    report_ids = {
+        int(item)
+        for citation_type, item in citations
+        if citation_type == "report" and (isinstance(item, int) or str(item).isdigit())
+    }
+    source_ids = {
+        str(item).casefold()
+        for citation_type, item in citations
+        if citation_type == "source"
+    }
+    texts: list[str] = []
+    for item in answer_evidence:
+        linked_reports = {int(value) for value in item.get("report_ids") or []}
+        linked_sources = {str(value).casefold() for value in item.get("source_ids") or []}
+        if (report_ids & linked_reports) or (source_ids & linked_sources):
+            texts.append(" ".join([
+                " ".join(item.get("headingPath") or []),
+                str(item.get("heading") or ""),
+                str(item.get("text") or ""),
+            ]))
+    return texts
+
+
+def _direct_evidence_support(line: str, evidence_texts: list[str]) -> bool:
+    """Reject generated interpretation unless the source text directly supports it."""
+    if not evidence_texts:
+        return False
+    claim = re.sub(r"\[Data:.*?\]", "", line, flags=re.IGNORECASE).strip()
+    if not claim:
+        return True
+    normalized_claim = _normalize_query_text(claim)
+    normalized_evidence = [
+        _normalize_query_text(text)
+        for text in evidence_texts
+        if _normalize_query_text(text)
+    ]
+    if not normalized_claim or not normalized_evidence:
+        return False
+
+    combined_evidence = " ".join(normalized_evidence)
+    original_evidence = " ".join(evidence_texts)
+    for term in _UNSUPPORTED_INFERENCE_TERMS:
+        if term in claim and term not in original_evidence:
+            return False
+
+    # Exact phrases of at least three Chinese characters are strong evidence
+    # that the generated sentence is a close restatement rather than a new
+    # conclusion. Latin terms are checked separately because normalized
+    # Chinese text has no word boundaries.
+    chinese_phrases = re.findall(r"[\u4e00-\u9fff]{3,}", claim)
+    exact_phrase_hits = sum(
+        1 for phrase in chinese_phrases if _normalize_query_text(phrase) in combined_evidence
+    )
+    latin_tokens = [
+        token.casefold()
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9_-]{1,}", claim)
+        if len(token) >= 3
+    ]
+    latin_hits = sum(1 for token in latin_tokens if token in combined_evidence)
+    chinese_bigrams = [
+        normalized_claim[index:index + 2]
+        for index in range(max(0, len(normalized_claim) - 1))
+        if all("\u4e00" <= char <= "\u9fff" for char in normalized_claim[index:index + 2])
+    ]
+    bigram_hits = sum(1 for gram in chinese_bigrams if gram in combined_evidence)
+    bigram_ratio = bigram_hits / max(len(chinese_bigrams), 1)
+    chinese_char_count = len(re.findall(r"[\u4e00-\u9fff]", claim))
+    if normalized_claim in combined_evidence:
+        return True
+    if chinese_char_count >= 4:
+        # Matching an acronym such as ERP is not sufficient to support a new
+        # Chinese description of what that acronym does.
+        return (
+            bigram_ratio >= 0.58
+            and (not latin_tokens or latin_hits == len(latin_tokens))
+        )
+    return bool(latin_tokens) and latin_hits == len(latin_tokens)
+
+
+def _evidence_excerpt_score(text: str, query: str) -> int:
+    """Rank a verbatim Evidence block against the question."""
+    normalized_text = _normalize_query_text(text)
+    normalized_query = _normalize_query_text(query)
+    if not normalized_text or not normalized_query:
+        return 0
+    score = 0
+    for token in re.findall(r"[a-z][a-z0-9_-]{1,}", query.casefold()):
+        if token in normalized_text:
+            score += max(6, len(token))
+    chinese_query = "".join(re.findall(r"[\u4e00-\u9fff]+", normalized_query))
+    score += sum(
+        1
+        for index in range(max(0, len(chinese_query) - 1))
+        if chinese_query[index:index + 2] in normalized_text
+    )
+    for marker in ("层", "卷", "章", "规范", "流程", "系统", "包括", "包含"):
+        if marker in query and marker in text:
+            score += 2
+    return score
+
+
+def _query_focus_terms(query: str) -> list[str]:
+    """Extract explicit subject terms while removing question boilerplate."""
+    value = str(query or "").casefold()
+    for marker in (
+        "包括哪些", "包含哪些", "包括什么", "包含什么", "有哪些",
+        "是什么", "为什么", "怎么", "如何", "多少",
+    ):
+        value = value.replace(marker, " ")
+    value = re.sub(r"(?:请问|请说明|请介绍|中的|当中|里面|关于)", " ", value)
+    ignored = {
+        "企业", "知识", "体系", "总体", "架构", "业务", "系统", "文档",
+        "手册", "资料", "内容", "层", "卷", "章",
+    }
+    terms: list[str] = []
+    for term in re.findall(r"[\u4e00-\u9fff]{2,}", value):
+        term = term.strip()
+        if term not in ignored:
+            terms.append(term)
+    terms.extend(
+        token
+        for token in re.findall(r"[a-z][a-z0-9_-]{1,}", value)
+        if token not in {"the", "and", "for", "with"}
+    )
+    return list(dict.fromkeys(terms))
+
+
+def _evidence_answers_query(item: dict, query: str) -> bool:
+    """Require explicit source wording for detail-oriented question targets."""
+    source = " ".join([
+        str(item.get("heading") or item.get("wiki_title") or ""),
+        str(item.get("text") or ""),
+    ]).casefold()
+    if not source.strip():
+        return False
+    required_terms = (
+        "版本", "日期", "时间", "作者", "部门", "权限", "密码", "端口", "地址",
+        "原因", "目的", "作用", "功能", "职责", "负责", "标准", "范围",
+        "数量", "状态", "条件", "要求", "步骤", "流程", "顺序", "频率",
+        "周期", "风险", "优点", "缺点", "限制",
+    )
+    for term in required_terms:
+        if term in query and term not in source:
+            return False
+    return bool(_extract_evidence_excerpt(str(item.get("text") or ""), query))
+
+
+def _filter_answer_evidence(answer_evidence: list[dict], query: str) -> list[dict]:
+    """Remove broadly retrieved Evidence that does not match the question subject."""
+    answer_evidence = [
+        item for item in answer_evidence
+        if _evidence_answers_query(item, query)
+    ]
+    if len(answer_evidence) <= 1:
+        return answer_evidence
+    focus_terms = _query_focus_terms(query)
+    if not focus_terms:
+        return answer_evidence
+    ranked: list[tuple[int, int, dict]] = []
+    for index, item in enumerate(answer_evidence):
+        heading = str(item.get("heading") or item.get("wiki_title") or "")
+        text = str(item.get("text") or "")
+        normalized_heading = _normalize_query_text(heading)
+        normalized_text = _normalize_query_text(text)
+        score = 0
+        for term in focus_terms:
+            normalized_term = _normalize_query_text(term)
+            if not normalized_term:
+                continue
+            if normalized_term in normalized_heading:
+                score += max(12, len(normalized_term) * 4)
+            elif normalized_term in normalized_text:
+                score += max(5, len(normalized_term) * 2)
+        ranked.append((score, index, item))
+    best_score = max(score for score, _, _ in ranked)
+    if best_score <= 0:
+        return answer_evidence
+    threshold = max(5, int(best_score * 0.6))
+    selected_indexes = {
+        index for score, index, _ in ranked if score >= threshold
+    }
+    return [
+        item for index, item in enumerate(answer_evidence)
+        if index in selected_indexes
+    ]
+
+
+def _extract_evidence_excerpt(text: str, query: str, max_chars: int = 1600) -> str:
+    """Select the most relevant contiguous block without rewriting its text."""
+    source = str(text or "").replace("\r\n", "\n").strip()
+    if not source:
+        return ""
+    separator = re.compile(r"(?m)^\s*[─━—=-]{5,}\s*$")
+    blocks = [block.strip() for block in separator.split(source) if block.strip()]
+    if len(blocks) <= 1:
+        blocks = [
+            block.strip()
+            for block in re.split(r"\n{3,}", source)
+            if block.strip()
+        ] or [source]
+    ranked = sorted(
+        enumerate(blocks),
+        key=lambda item: (-_evidence_excerpt_score(item[1], query), item[0]),
+    )
+    _, best_block = ranked[0]
+    if _evidence_excerpt_score(best_block, query) <= 0:
+        return ""
+    return best_block[:max_chars].rstrip()
+
+
+def _evidence_inline_reference(items: list[dict]) -> str:
+    evidence_ids = list(dict.fromkeys(
+        str(item.get("evidence_id") or "").strip()
+        for item in items
+        if str(item.get("evidence_id") or "").strip()
+    ))
+    if not evidence_ids:
+        return ""
+    return f"[Evidence: {', '.join(evidence_ids[:5])}]"
+
+
+def _answer_citations(text: str) -> list[tuple[str, int | str]]:
+    citations: list[tuple[str, int | str]] = []
+    citations.extend(("report", report_id) for report_id in _extract_report_ids(text))
+    citations.extend(("source", source_id) for source_id in _extract_source_ids(text))
+    return citations
+
+
+def _citation_items(
+    citations: list[tuple[str, int | str]],
+    answer_evidence: list[dict],
+) -> list[dict]:
+    report_ids = {
+        int(item)
+        for citation_type, item in citations
+        if citation_type == "report" and (isinstance(item, int) or str(item).isdigit())
+    }
+    source_ids = {
+        str(item).casefold()
+        for citation_type, item in citations
+        if citation_type == "source"
+    }
+    return [
+        item
+        for item in answer_evidence
+        if (
+            report_ids & {int(value) for value in item.get("report_ids") or []}
+            or source_ids & {
+                str(value).casefold() for value in item.get("source_ids") or []
+            }
+        )
+    ]
+
+
+def _subject_label(query: str) -> str:
+    latin_layer = re.search(r"\b([A-Za-z][A-Za-z0-9_-]*)\s*层", query)
+    if latin_layer:
+        return f"{latin_layer.group(1)} 层"
+    chinese_layer = re.search(r"([\u4e00-\u9fffA-Za-z0-9_-]{2,12}层)", query)
+    if chinese_layer:
+        return chinese_layer.group(1)
+    return "相关内容"
+
+
+def _compose_list_answer(query: str, answer_evidence: list[dict]) -> str:
+    """Turn a source list into a concise answer without adding item semantics."""
+    if not any(marker in query for marker in ("哪些", "有什么", "有哪些", "包括", "包含")):
+        return ""
+    excerpts = [
+        _extract_evidence_excerpt(str(item.get("text") or ""), query)
+        for item in answer_evidence
+    ]
+    source = "\n".join(excerpt for excerpt in excerpts if excerpt)
+    if not source:
+        return ""
+
+    subject = _subject_label(query)
+    subject_tokens = {
+        token.casefold()
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9_-]*", subject)
+    }
+    items: list[str] = []
+    seen: set[str] = set()
+    for token in re.findall(r"\b[A-Za-z][A-Za-z0-9_.+#/-]*\b|数据库", source):
+        normalized = token.casefold()
+        if normalized in subject_tokens or normalized in {"data", "layer"}:
+            continue
+        if normalized not in seen:
+            seen.add(normalized)
+            items.append(token)
+    if len(items) < 2:
+        return ""
+
+    if len(items) == 2:
+        item_text = f"{items[0]} 和{items[1]}"
+    else:
+        item_text = "、".join(items[:-1]) + f" 和{items[-1]}"
+    return (
+        f"根据当前资料，{subject}包含 {item_text}。"
+        f"{_evidence_inline_reference(answer_evidence)}"
+    )
+
+
+def _supported_candidate_answer(
+    answer: str,
+    answer_evidence: list[dict],
+) -> str:
+    """Keep only concise GraphRAG statements directly supported by cited Evidence."""
+    supported: list[tuple[str, list[dict]]] = []
+    seen: set[str] = set()
+    paragraphs = [
+        paragraph.strip()
+        for paragraph in re.split(r"\n{2,}", answer)
+        if paragraph.strip() and not paragraph.lstrip().startswith("#")
+    ]
+    for paragraph in paragraphs:
+        citations = _answer_citations(paragraph)
+        linked_items = _citation_items(citations, answer_evidence)
+        if not linked_items:
+            continue
+        evidence_texts = [
+            " ".join([
+                str(item.get("heading") or item.get("wiki_title") or ""),
+                str(item.get("text") or ""),
+            ])
+            for item in linked_items
+        ]
+        clean_paragraph = re.sub(
+            r"\[Data:\s*(?:Reports?|Sources?)\s*\([^)]*\)\]",
+            "",
+            paragraph,
+            flags=re.IGNORECASE,
+        )
+        for sentence in re.split(r"(?<=[。！？!?])\s*|\n+", clean_paragraph):
+            sentence = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*", "", sentence).strip()
+            if not sentence or len(sentence) > 360:
+                continue
+            normalized = _normalize_query_text(sentence)
+            if normalized in seen or not _direct_evidence_support(sentence, evidence_texts):
+                continue
+            seen.add(normalized)
+            supported.append((sentence, linked_items))
+            if len(supported) >= 5:
+                break
+        if len(supported) >= 5:
+            break
+    if not supported:
+        return ""
+    if len(supported) == 1:
+        sentence, items = supported[0]
+        return (
+            f"根据当前资料，{sentence.rstrip('。')}。"
+            f"{_evidence_inline_reference(items)}"
+        )
+    lines = [
+        f"- {sentence.rstrip('。')}。{_evidence_inline_reference(items)}"
+        for sentence, items in supported
+    ]
+    return "根据当前资料，可确认以下内容：\n\n" + "\n".join(lines)
+
+
+def _grounded_report_answer(
+    answer: str,
+    answer_evidence: list[dict],
+) -> str:
+    """Keep GraphRAG's structured prose only when its citations are traceable."""
+    if not answer_evidence:
+        return ""
+
+    output: list[str] = []
+    pending_headings: list[str] = []
+    for block in re.split(r"\n{2,}", str(answer or "").strip()):
+        block = block.strip()
+        if not block:
+            continue
+        if block.startswith("#") and not re.search(r"\[Data:", block, re.IGNORECASE):
+            pending_headings.append(block)
+            continue
+
+        citations = _answer_citations(block)
+        linked_items = _citation_items(citations, answer_evidence)
+        if not linked_items:
+            continue
+        # The GraphRAG query prompts already forbid external knowledge. At
+        # this layer, require each retained paragraph to carry a citation that
+        # can be traced to the active EUOS snapshot. Do not force it to be a
+        # verbatim copy of a single Evidence item: a Report can legitimately
+        # synthesize several retrieved Text Units.
+        output.extend(pending_headings)
+        pending_headings.clear()
+        output.append(block)
+
+    return "\n\n".join(output).strip()
+
+
+def _evidence_grounded_answer(
+    answer: str,
+    answer_evidence: list[dict],
+    query: str = "",
+) -> str:
+    """Create a readable answer while keeping every fact tied to EUOS Evidence."""
+    if not answer_evidence:
+        return "当前资料未说明，无法确认。"
+    return (
+        _grounded_report_answer(answer, answer_evidence)
+        or _compose_list_answer(query, answer_evidence)
+        or _supported_candidate_answer(answer, answer_evidence)
+        or "当前资料未说明，无法确认。"
+    )
 
 
 def _stable_id(prefix: str, *parts: object) -> str:
@@ -1757,10 +2605,70 @@ def hybrid_query(query: str, method: str, scope: str, max_hops: int = 3) -> dict
         raise ValueError("scope must be published or all")
     if not 1 <= max_hops <= 6:
         raise ValueError("maxHops must be between 1 and 6")
-    code, answer = run_cli(["query", "--root", ".", "--method", method, query])
-    result = {"ok": code == 0, "code": code, "answer": answer, "scope": scope, "max_hops": max_hops, "paths": [], "evidence": [], "candidate_states": []}
+    if method in {"local", "basic", "drift"}:
+        healthy, health_message = embedding_service_status()
+        if not healthy:
+            return {
+                "ok": False,
+                "code": None,
+                "answer": health_message,
+                "error": health_message,
+                "scope": scope,
+                "max_hops": max_hops,
+                "paths": [],
+                "evidence": [],
+                "answer_evidence": [],
+                "citation_coverage": {
+                    "report_ids": [],
+                    "resolved_report_ids": [],
+                    "unresolved_report_ids": [],
+                    "unique_evidence_count": 0,
+                },
+                "candidate_states": [],
+            }
+    code, answer = run_cli(["query", "--root", ".", "--method", method, query], timeout=600)
+    answer = _clean_query_output(answer)
+    result = {
+        "ok": code == 0,
+        "code": code,
+        "answer": answer,
+        "scope": scope,
+        "max_hops": max_hops,
+        "entities": [],
+        "paths": [],
+        "evidence": [],
+        "answer_evidence": [],
+        "citation_coverage": {
+            "report_ids": [],
+            "resolved_report_ids": [],
+            "unresolved_report_ids": [],
+            "unique_evidence_count": 0,
+        },
+        "candidate_states": [],
+    }
     if code != 0:
+        result["error"] = _query_failure_message(answer)
+        result["answer"] = result["error"]
         return result
+    resolved_answer_evidence, result["citation_coverage"] = _resolve_answer_evidence(
+        answer,
+        query,
+    )
+    # Keep the complete resolved support set for the answer. The narrower
+    # projection remains dedicated to the strict provenance panel.
+    result["answer_evidence"] = _filter_answer_evidence(
+        resolved_answer_evidence,
+        query,
+    )
+    result["citation_coverage"]["grounded_evidence_count"] = len(
+        result["answer_evidence"]
+    )
+    result["answer"] = _evidence_grounded_answer(
+        answer,
+        resolved_answer_evidence,
+        query,
+    )
+    answer = result["answer"]
     config = _neo4j_config({})
     if not config["password"]:
         return result
@@ -1773,9 +2681,10 @@ def hybrid_query(query: str, method: str, scope: str, max_hops: int = 3) -> dict
         cypher = """
             MATCH p=(s:PublishedEntity)-[:PUBLISHED_RELATION*1..6]->(t:PublishedEntity)
             WHERE length(p) <= $max_hops
-              AND ANY(n IN nodes(p) WHERE n.extracted_id IN $anchor_ids)
+              AND s.extracted_id IN $anchor_ids
             RETURN [n IN nodes(p) | {id:n.id,title:n.title,type:n.entity_type,status:n.status}] AS nodes,
-                   [r IN relationships(p) | {candidate_id:r.candidate_id,description:r.description,status:r.status,evidence_ids:r.evidence_ids}] AS relationships
+                   [r IN relationships(p) | {candidate_id:r.candidate_id,description:r.description,status:r.status,weight:r.weight,evidence_ids:r.evidence_ids}] AS relationships
+            ORDER BY length(p)
             LIMIT 12
         """
     else:
@@ -1783,42 +2692,67 @@ def hybrid_query(query: str, method: str, scope: str, max_hops: int = 3) -> dict
             MATCH p=(s:ExtractedEntity)-[:EXTRACTED_RELATION*1..6]->(t:ExtractedEntity)
             WHERE length(p) <= $max_hops
               AND ALL(r IN relationships(p) WHERE r.status IN ['Candidate','Accepted'])
-              AND ANY(n IN nodes(p) WHERE n.id IN $anchor_ids)
+              AND s.id IN $anchor_ids
             RETURN [n IN nodes(p) | {id:n.id,title:n.title,type:n.entity_type,status:'Extracted'}] AS nodes,
-                   [r IN relationships(p) | {candidate_id:r.candidate_id,description:r.description,status:r.status,evidence_ids:r.evidence_ids}] AS relationships
+                   [r IN relationships(p) | {candidate_id:r.candidate_id,description:r.description,status:r.status,weight:r.weight,evidence_ids:r.evidence_ids}] AS relationships
+            ORDER BY length(p)
             LIMIT 12
         """
     driver = GraphDatabase.driver(config["uri"], auth=(config["user"], config["password"]))
     try:
         with driver.session(database=config["database"]) as session:
-            anchor_rows = list(session.run("""
+            mentioned_rows = [dict(row) for row in session.run("""
                 MATCH (e:ExtractedEntity {graph_origin:'module3'})
-                WHERE any(term IN $terms WHERE size(term) >= 2 AND
-                    (toLower(e.title) CONTAINS term OR term CONTAINS toLower(e.title)))
-                RETURN e.id AS id, e.title AS title
+                WHERE size(replace(e.title, ' ', '')) >= 2
+                  AND replace(toLower($question), ' ', '') CONTAINS replace(toLower(e.title), ' ', '')
+                RETURN e.id AS id, e.title AS title, e.entity_type AS type
                 ORDER BY size(e.title) DESC
-                LIMIT 12
-            """, terms=terms))
+                LIMIT 24
+            """, question=query)]
+            anchor_rows = _select_query_anchors(mentioned_rows, query)
             anchor_ids = [row["id"] for row in anchor_rows]
             # If no question entity is found, retain the old broad behavior as
             # a fallback instead of returning an empty graph context.
             if not anchor_ids:
-                anchor_rows = list(session.run("""
+                anchor_rows = [dict(row) for row in session.run("""
                     MATCH (e:ExtractedEntity {graph_origin:'module3'})
                     WHERE toLower($answer) CONTAINS toLower(e.title)
-                    RETURN e.id AS id, e.title AS title
+                    RETURN e.id AS id, e.title AS title, e.entity_type AS type
+                    ORDER BY size(e.title) DESC
                     LIMIT 12
-                """, answer=answer))
+                """, answer=answer)]
+                anchor_rows = _select_query_anchors(anchor_rows, query)
                 anchor_ids = [row["id"] for row in anchor_rows]
             paths = [dict(row) for row in session.run(cypher, anchor_ids=anchor_ids, max_hops=max_hops)] if anchor_ids else []
+            paths = _dedupe_query_paths(paths)
+            paths = _prefer_direct_list_paths(paths, query)
             candidate_ids = sorted({relation["candidate_id"] for path in paths for relation in path["relationships"] if relation.get("candidate_id")})
             evidence_rows = []
             states = []
             if candidate_ids:
+                provenance_rows = [dict(row) for row in session.run("""
+                    MATCH (c:RelationshipCandidate)
+                    WHERE c.id IN $ids
+                    OPTIONAL MATCH (c)-[:FROM_WIKI]->(w:WikiPage)
+                    RETURN c.id AS candidate_id,
+                           [item IN collect(DISTINCT {id:w.id,title:w.title})
+                            WHERE item.id IS NOT NULL] AS wikis
+                """, ids=candidate_ids)]
+                provenance_by_candidate = {
+                    row["candidate_id"]: row.get("wikis") or []
+                    for row in provenance_rows
+                }
+                for path in paths:
+                    for relation in path.get("relationships") or []:
+                        wikis = provenance_by_candidate.get(relation.get("candidate_id"), [])
+                        relation["wikis"] = wikis
+                        if len(wikis) == 1:
+                            relation["wiki_page_id"] = wikis[0].get("id")
+                            relation["wiki_title"] = wikis[0].get("title")
                 evidence_rows = [dict(row) for row in session.run("""
                     MATCH (c:RelationshipCandidate)-[:SUPPORTED_BY]->(e:Evidence)
                     WHERE c.id IN $ids
-                    OPTIONAL MATCH (c)-[:FROM_WIKI]->(w:WikiPage)
+                    MATCH (c)-[:FROM_WIKI]->(w:WikiPage)-[:HAS_EVIDENCE]->(e)
                     OPTIONAL MATCH (d:SourceDocument)-[:HAS_WIKI]->(w)
                     OPTIONAL MATCH (c)-[:SOURCE]->(source:ExtractedEntity)
                     OPTIONAL MATCH (c)-[:TARGET]->(target:ExtractedEntity)
@@ -1828,10 +2762,31 @@ def hybrid_query(query: str, method: str, scope: str, max_hops: int = 3) -> dict
                       e.document_version_id AS document_version_id, w.title AS wiki_title, d.title AS document_title
                 """, ids=candidate_ids)]
                 evidence_rows = _rank_query_evidence(evidence_rows, query_text, terms)
+                # A single Evidence unit can support several returned facts.
+                # Preserve that coverage while keeping the citation deduplicated.
+                for evidence in evidence_rows:
+                    evidence_id = str(evidence.get("evidence_id") or "")
+                    supported = []
+                    seen_supported = set()
+                    for path in paths:
+                        nodes = path.get("nodes") or []
+                        for index, relation in enumerate(path.get("relationships") or []):
+                            if evidence_id not in (relation.get("evidence_ids") or []):
+                                continue
+                            source_title = nodes[index].get("title") if index < len(nodes) else ""
+                            target_title = nodes[index + 1].get("title") if index + 1 < len(nodes) else ""
+                            key = (source_title, target_title)
+                            if key in seen_supported:
+                                continue
+                            seen_supported.add(key)
+                            supported.append({"source": source_title, "target": target_title})
+                    evidence["supported_relations"] = supported
+                    evidence["supported_relation_count"] = len(supported)
                 states = [dict(row) for row in session.run(
                     "MATCH (c) WHERE c.id IN $ids RETURN c.id AS candidate_id, c.status AS status, c.reviewer AS reviewer, c.reviewed_at AS reviewed_at",
                     ids=candidate_ids,
                 )]
+            result["entities"] = anchor_rows
             result["paths"] = paths
             result["evidence"] = evidence_rows
             result["candidate_states"] = states
@@ -1846,6 +2801,77 @@ def _query_terms(query: str) -> list[str]:
     ignored = {"包括什么", "有哪些", "是什么", "哪些业务系统", "系统", "架构", "企业", "中的"}
     terms = [term.strip() for term in raw_terms if term.strip() not in ignored]
     return list(dict.fromkeys(terms))
+
+
+def _normalize_query_text(value: object) -> str:
+    return re.sub(r"[\W_]+", "", str(value or "").casefold(), flags=re.UNICODE)
+
+
+def _select_query_anchors(rows: list[dict], query: str) -> list[dict]:
+    """Prefer the entity immediately governed by a list/definition question."""
+    if not rows:
+        return []
+    normalized_query = _normalize_query_text(query)
+    mentions: list[tuple[dict, str, int, int]] = []
+    for row in rows:
+        title = _normalize_query_text(row.get("title"))
+        position = normalized_query.find(title)
+        if title and position >= 0:
+            mentions.append((row, title, position, position + len(title)))
+
+    markers = ("包括哪些", "包含哪些", "包括什么", "包含什么", "有哪些", "是什么")
+    marker_positions = [
+        normalized_query.find(marker)
+        for marker in markers
+        if normalized_query.find(marker) >= 0
+    ]
+    if marker_positions and mentions:
+        marker_position = min(marker_positions)
+        preceding = [item for item in mentions if item[3] <= marker_position]
+        if preceding:
+            closest_end = max(item[3] for item in preceding)
+            closest = [item for item in preceding if item[3] == closest_end]
+            return [max(closest, key=lambda item: len(item[1]))[0]]
+
+    # Remove generic aliases already covered by a longer mentioned entity.
+    selected = []
+    for row, title, _, _ in sorted(mentions, key=lambda item: len(item[1]), reverse=True):
+        if any(title in selected_title for _, selected_title in selected):
+            continue
+        selected.append((row, title))
+    return [row for row, _ in selected[:6]]
+
+
+def _dedupe_query_paths(paths: list[dict]) -> list[dict]:
+    """Remove duplicate Neo4j paths while preserving their ranked order."""
+    kept: list[dict] = []
+    seen: set[tuple] = set()
+    for path in paths:
+        node_ids = tuple(str(node.get("id") or node.get("title") or "") for node in path.get("nodes") or [])
+        relation_ids = tuple(
+            str(relation.get("candidate_id") or relation.get("description") or "")
+            for relation in path.get("relationships") or []
+        )
+        key = (node_ids, relation_ids)
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(path)
+    return kept
+
+
+def _prefer_direct_list_paths(paths: list[dict], query: str) -> list[dict]:
+    """For list questions, return direct facts instead of unrelated expansions."""
+    normalized_query = _normalize_query_text(query)
+    markers = ("包括哪些", "包含哪些", "包括什么", "包含什么", "有哪些")
+    if not any(marker in normalized_query for marker in markers):
+        return paths
+    direct_paths = [
+        path
+        for path in paths
+        if len(path.get("relationships") or []) == 1
+    ]
+    return direct_paths or paths
 
 
 def _rank_query_evidence(rows: list[dict], query_text: str, terms: list[str]) -> list[dict]:
@@ -1865,12 +2891,21 @@ def _rank_query_evidence(rows: list[dict], query_text: str, terms: list[str]) ->
     ranked = sorted(rows, key=lambda row: (-score(row), str(row.get("candidate_id")), str(row.get("evidence_id"))))
     kept: list[dict] = []
     per_candidate: dict[str, int] = {}
+    seen_evidence: set[str] = set()
     for row in ranked:
         candidate_id = str(row.get("candidate_id") or "")
+        evidence_id = str(row.get("evidence_id") or "")
+        evidence_key = evidence_id or "|".join(
+            str(row.get(key) or "").strip()
+            for key in ("document_version_id", "heading", "text")
+        )
+        if evidence_key in seen_evidence:
+            continue
         if per_candidate.get(candidate_id, 0) >= 2:
             continue
         if score(row) <= 0 and kept:
             continue
+        seen_evidence.add(evidence_key)
         per_candidate[candidate_id] = per_candidate.get(candidate_id, 0) + 1
         kept.append(row)
         if len(kept) >= 8:
@@ -2201,10 +3236,24 @@ class Handler(BaseHTTPRequestHandler):
                 # Passing an absolute Windows path here is misparsed by the
                 # installed GraphRAG CLI, so keep the root path relative.
                 code, output = run_cli(["query", "--root", ".", "--method", method, query])
+                output = _clean_query_output(output)
+                answer_evidence: list[dict] = []
+                if code == 0:
+                    resolved_answer_evidence, _ = _resolve_answer_evidence(output, query)
+                    answer_evidence = _filter_answer_evidence(
+                        resolved_answer_evidence,
+                        query,
+                    )
+                    output = _evidence_grounded_answer(
+                        output,
+                        resolved_answer_evidence,
+                        query,
+                    )
                 evidence = build_query_evidence(query, output) if code == 0 else None
                 response = {"ok": code == 0, "code": code, "output": output}
                 if evidence is not None:
                     response["evidence"] = evidence
+                    response["answer_evidence"] = answer_evidence
                 self._send(200, json.dumps(response, ensure_ascii=False), "application/json")
                 return
             elif path == "/api/index":

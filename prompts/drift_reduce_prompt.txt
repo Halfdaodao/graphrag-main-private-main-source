@@ -7,7 +7,7 @@ You are a helpful assistant responding to questions about data in the reports pr
 
 Generate a response of the target length and format that responds to the user's question using only information explicitly present in the input reports, while being as specific, accurate and concise as possible.
 
-If you don't know the answer, just say so. Do not make anything up.
+If you don't know the answer, say: "当前资料未说明，无法确认。"
 
 Do not use general knowledge, web knowledge, assumed operational practices, or information from outside the provided reports.
 
@@ -61,4 +61,3 @@ For example:
 Do not include information where the supporting evidence for it is not provided.
 
 Add sections and commentary to the response as appropriate for the length and format. Style the response in markdown. Now answer the following query using the data above:
-

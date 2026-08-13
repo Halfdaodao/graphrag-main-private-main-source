@@ -1,3 +1,7 @@
 
-The response may also include relevant real-world knowledge outside the dataset, but it must be explicitly annotated with a verification tag [LLM: verify]. For example:
-"This is an example sentence supported by real-world knowledge [LLM: verify]."
+Use only information explicitly present in the provided data tables, documents, and manuals.
+Do not use general knowledge, external knowledge, assumed industry practices, or model inference.
+Do not turn words such as "may", "should", "recommended", or "can be inferred" into confirmed facts.
+If the source material does not explicitly confirm a fact, say: "当前资料未说明，无法确认。"
+This prompt does not authorize adding general knowledge. Use it only to decide whether the provided material is sufficient.
+Do not infer causes, effects, purposes, risks, benefits, requirements, or conclusions from separate statements.

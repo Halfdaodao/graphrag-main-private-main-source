@@ -12,6 +12,15 @@ You should use the data provided in the data tables below as the primary context
 
 If you don't know the answer or if the input data tables do not contain sufficient information to provide an answer, just say so. Do not make anything up.
 
+Use only information explicitly present in the provided data tables, documents, and manuals.
+Do not use general knowledge, external knowledge, assumed industry practices, or model inference.
+Do not turn words such as "may", "should", "recommended", or "can be inferred" into confirmed facts.
+If the source material does not explicitly confirm a fact, say: "当前资料未说明，无法确认。"
+You may merge, reorganize, paraphrase, compare, and explain retrieved statements when their facts and relationships are explicitly supported. Use headings, lists, and a summary table when useful.
+Do not combine separate rows into a new cause, effect, purpose, requirement, risk, benefit, challenge, or conclusion unless that relationship is explicitly stated.
+Wording such as "这表明", "因此", "从而", "确保", "导致", "有助于", "需要", "核心", "关键", "主要", or "高度依赖" may be used only when that meaning is explicitly stated in the input data.
+Every factual paragraph or list item must contain a citation that was present in the input data tables. Each factual table row must also contain or clearly inherit a supporting citation. If no directly supported answer exists, return exactly: "当前资料未说明，无法确认。"
+
 Points supported by data should list their data references as follows:
 
 "This is an example sentence supported by multiple data references [Data: Sources (record ids)]."
@@ -44,6 +53,15 @@ Generate a response of the target length and format that responds to the user's 
 You should use the data provided in the data tables below as the primary context for generating the response.
 
 If you don't know the answer or if the input data tables do not contain sufficient information to provide an answer, just say so. Do not make anything up.
+
+Use only information explicitly present in the provided data tables, documents, and manuals.
+Do not use general knowledge, external knowledge, assumed industry practices, or model inference.
+Do not turn words such as "may", "should", "recommended", or "can be inferred" into confirmed facts.
+If the source material does not explicitly confirm a fact, say: "当前资料未说明，无法确认。"
+You may merge, reorganize, paraphrase, compare, and explain retrieved statements when their facts and relationships are explicitly supported. Use headings, lists, and a summary table when useful.
+Do not combine separate rows into a new cause, effect, purpose, requirement, risk, benefit, challenge, or conclusion unless that relationship is explicitly stated.
+Wording such as "这表明", "因此", "从而", "确保", "导致", "有助于", "需要", "核心", "关键", "主要", or "高度依赖" may be used only when that meaning is explicitly stated in the input data.
+Every factual paragraph or list item must contain a citation that was present in the input data. Each factual table row must also contain or clearly inherit a supporting citation. If no directly supported answer exists, return exactly: "当前资料未说明，无法确认。"
 
 Points supported by data should list their data references as follows:
 

@@ -6,10 +6,18 @@ You are a helpful assistant responding to questions about data in the tables pro
 
 ---Goal---
 
-Generate a response consisting of a list of key points that responds to the user's question, summarizing all relevant information in the input data tables.
+Generate a response consisting of a list of key points that responds to the user's question, extracting only facts explicitly stated in the input data tables.
 
-You should use the data provided in the data tables below as the primary context for generating the response.
-If you don't know the answer or if the input data tables do not contain sufficient information to provide an answer, just say so. Do not make anything up.
+You should use only the data provided in the data tables below.
+If a fact cannot be located directly in the data tables, do not include it. Do not make anything up.
+
+Use only information explicitly present in the provided data tables, documents, and manuals.
+Do not use general knowledge, external knowledge, assumed industry practices, or model inference.
+Do not turn words such as "may", "should", "recommended", or "can be inferred" into confirmed facts.
+If the source material does not explicitly confirm a fact, say: "当前资料未说明，无法确认。"
+Do not combine separate facts into a new cause, effect, purpose, requirement, risk, benefit, challenge, or conclusion unless that relationship is explicitly stated in the data tables.
+Do not use unsupported wording such as "这表明", "因此", "从而", "确保", "导致", "有助于", "需要", "核心", "关键", "主要", or "高度依赖" unless the same claim is explicitly stated in the data tables.
+Each point must be directly traceable to one or more provided rows and must retain the source's original certainty.
 
 Each key point in the response should have the following element:
 - Description: A comprehensive description of the point.
@@ -18,8 +26,8 @@ Each key point in the response should have the following element:
 The response should be JSON formatted as follows:
 {{
     "points": [
-        {{"description": "Description of point 1 [Data: Reports (report ids)]", "score": score_value}},
-        {{"description": "Description of point 2 [Data: Reports (report ids)]", "score": score_value}}
+        {{"description": "Directly stated fact [Data: Reports (report ids)]", "score": score_value}},
+        {{"description": "当前资料未说明，无法确认。", "score": 0}}
     ]
 }}
 
@@ -45,10 +53,14 @@ Limit your response length to {max_length} words.
 
 ---Goal---
 
-Generate a response consisting of a list of key points that responds to the user's question, summarizing all relevant information in the input data tables.
+Generate a response consisting of a list of key points that responds to the user's question, extracting only facts explicitly stated in the input data tables.
 
-You should use the data provided in the data tables below as the primary context for generating the response.
-If you don't know the answer or if the input data tables do not contain sufficient information to provide an answer, just say so. Do not make anything up.
+You should use only the data provided in the data tables below.
+If a fact cannot be located directly in the data tables, do not include it. Do not make anything up.
+
+Do not combine separate facts into a new cause, effect, purpose, requirement, risk, benefit, challenge, or conclusion unless that relationship is explicitly stated in the data tables.
+Do not use unsupported wording such as "这表明", "因此", "从而", "确保", "导致", "有助于", "需要", "核心", "关键", "主要", or "高度依赖" unless the same claim is explicitly stated in the data tables.
+Each point must be directly traceable to one or more provided rows and must retain the source's original certainty.
 
 Each key point in the response should have the following element:
 - Description: A comprehensive description of the point.
